@@ -1,0 +1,1158 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>人物动作编辑器</title>
+<style>
+  :root { --ink:#141414; --line:#c9c9c4; --bg:#eceae4; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font:13px/1.5 "Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif; }
+  .wrap { max-width:1000px; margin:0 auto; padding:10px 14px 26px; }
+  header { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:8px; }
+  header .lt { display:flex; align-items:center; gap:8px; }
+  header .rt { display:flex; justify-content:flex-end; }
+  h1 { font-size:20px; margin:0; letter-spacing:2px; }
+  .tag { font:11px/1 ui-monospace,monospace; border:1px solid var(--line);
+    background:#fff; padding:4px 6px; border-radius:3px; color:#444; white-space:nowrap; }
+  button { font:inherit; cursor:pointer; background:#fff; color:var(--ink);
+    border:1px solid #9a9a94; border-radius:4px; padding:6px 13px; }
+  button:hover { background:#f3f2ee; }
+  button.on { background:var(--ink); color:#fff; border-color:var(--ink); }
+  .card { background:#fff; border:1px solid var(--line); padding:8px; }
+  .top { display:flex; gap:16px; align-items:flex-start; margin-top:10px; flex-wrap:wrap; }
+  .colhdr, #frameGrid { display:grid; grid-template-columns:18px repeat(4,auto); gap:4px; }
+  .rowlab { display:flex; align-items:center; justify-content:center; font-size:12px; color:#555; }
+  .colab { font-size:12px; color:#333; text-align:center; }
+  .cell { display:block; width:42px; height:42px; border:2px solid transparent;
+    background:#fff; cursor:pointer; padding:0; }
+  .cell.sel { border-color:var(--ink); }
+  .cap { font-size:12px; color:#333; text-align:center; margin-bottom:5px; }
+  #demo { display:block; background:#fff; cursor:pointer; touch-action:none; }
+  .padwrap { margin-top:14px; display:flex; justify-content:center; }
+  #pad { display:block; background:#fff; border:1px solid #b9b9b3; cursor:crosshair;
+    touch-action:none; user-select:none; -webkit-user-select:none; }
+  .btns { margin-top:14px; display:flex; flex-direction:column; gap:9px; }
+  .brow { display:grid; grid-template-columns:repeat(6,1fr); gap:10px; }
+  .brow button { padding:10px 4px; }
+  .hint { margin-top:9px; font-size:12px; color:#5a5a54; text-align:center; }
+  .guide { margin-top:12px; display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .guide .card { padding:10px 12px; }
+  .guide h3 { font-size:13px; margin:0 0 6px; letter-spacing:1px;
+    border-bottom:1px solid var(--line); padding-bottom:5px; }
+  .guide dl { margin:0; font-size:12px; line-height:1.6; }
+  .guide dt { font-weight:600; margin-top:6px; color:#141414; }
+  .guide dt:first-child { margin-top:0; }
+  .guide dd { margin:2px 0 0; color:#555; padding-left:14px; position:relative; }
+  .guide dd::before { content:"·"; position:absolute; left:4px; }
+  kbd { font:11px/1 ui-monospace,monospace; border:1px solid #b0b0aa; border-bottom-width:2px;
+    border-radius:3px; padding:2px 5px; background:#f7f6f3; color:#141414; white-space:nowrap; }
+  @media (max-width:760px) { .guide { grid-template-columns:1fr; } }
+  #toast { position:fixed; left:50%; bottom:20px; transform:translateX(-50%);
+    background:#141414; color:#fff; padding:8px 16px; border-radius:4px; font-size:13px;
+    opacity:0; transition:opacity .18s; pointer-events:none; }
+  #toast.show { opacity:1; }
+  .mask { position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex;
+    align-items:center; justify-content:center; padding:20px; z-index:20; }
+  .mask.hidden { display:none; }
+  .sheet { background:#fff; border-radius:6px; padding:14px; width:100%; max-width:780px;
+    max-height:84vh; display:flex; flex-direction:column; gap:10px; }
+  .sheet h2 { font-size:16px; margin:0; }
+  .sheet textarea { flex:1; min-height:280px; width:100%; resize:vertical;
+    font:12px/1.35 ui-monospace,Consolas,monospace; border:1px solid var(--line); padding:8px; }
+  .sheet .row { display:flex; gap:8px; justify-content:flex-end; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="lt">
+      <span class="tag" id="verTag">已存 v30</span>
+      <button id="btnImport">导入</button>
+      <button id="btnBack">返回</button>
+    </div>
+    <h1>人物动作</h1>
+    <div class="rt"><button id="btnDone">完成</button></div>
+  </header>
+
+  <section class="top">
+    <div class="card">
+      <div class="colhdr" id="frameHdr"></div>
+      <div id="frameGrid"></div>
+    </div>
+    <div class="card">
+      <div class="cap">长按复原场景</div>
+      <canvas id="demo"></canvas>
+    </div>
+  </section>
+
+  <section class="padwrap"><canvas id="pad"></canvas></section>
+
+  <section class="btns">
+    <div class="brow" id="row1"></div>
+    <div class="brow" id="row2"></div>
+  </section>
+
+
+  <section class="guide">
+    <div class="card">
+      <h3>示意图怎么用</h3>
+      <dl>
+        <dt>方向键移动人物</dt>
+        <dd>在页面任意位置按 <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd>，右边示意场景里的小人就走一步，朝向也跟着变。</dd>
+        <dd>方向键会先照顾选区：只要画布上有选区，方向键就是在搬像素，示意图不动。没有选区时才是走人。</dd>
+
+        <dt>鼠标或手指滑动</dt>
+        <dd>在示意场景里按住往一个方向拖，松手后小人朝那个方向走一步。拖动距离小于 12 像素算点击，不动。</dd>
+
+        <dt>连续行走会自动切帧</dt>
+        <dd>同方向连按，交替用第 1 帧和第 2 帧，看起来就是在迈步。停下来后从第 1 帧重新起。</dd>
+        <dd>换方向会重置到该方向的第 1 帧，所以四个方向各自都有完整的迈步循环。</dd>
+
+        <dt>顶着墙也照样切帧</dt>
+        <dd>前面是墙或箱子推不动时，人不动，但帧照切。这样贴着墙挪动时腿不会僵住。</dd>
+
+        <dt>推箱子用 3、4 帧</dt>
+        <dd>前方是箱子且后面是空地时，箱子和人一起前进一格，人物用第 3 帧（伸手推的姿态）。</dd>
+        <dd>连续推同方向时，第 3 帧和第 4 帧交替，所以推一段路不会一直是同一个姿势。</dd>
+        <dd>箱子顶到墙或另一个箱子、推不动时，姿势仍然是伸手推，并且照样在 3、4 帧之间切换。</dd>
+        <dd>也就是说只要前面贴着箱子，画面上就一直是推的样子；离开箱子才会回到走路的 1、2 帧。</dd>
+
+        <dt>停在目标点上的箱子</dt>
+        <dd>箱子推到目标点后变成实心方块加叉的样式，表示已经到位。</dd>
+        <dd>到位的箱子仍然可以继续推走；推出目标点后，那一格会恢复成空的目标点，不会消失。</dd>
+
+        <dt>长按复原</dt>
+        <dd>在示意场景里按住约半秒，场景回到初始状态，箱子、目标点、人的位置都复位。改完一帧想重看效果就用这个。</dd>
+      </dl>
+    </div>
+
+    <div class="card">
+      <h3>画布与工具</h3>
+      <dl>
+        <dt>上墨和擦除</dt>
+        <dd>左键点或拖动上墨，右键点或拖动擦除。按住不放能连续画一整笔。</dd>
+        <dd>选中「橡皮」按钮后左键也变成擦，方便没有右键的触屏设备。</dd>
+
+        <dt>粗细</dt>
+        <dd><kbd>1像素</kbd> 一次画一格，<kbd>4像素</kbd> 一次画一个 4×4 方块。选了橡皮时同样按这个粗细擦。</dd>
+
+        <dt>套索加选减选</dt>
+        <dd>直接拖 = 重新框一块；按住 <kbd>Shift</kbd> 拖 = 再框一块加进来；按住 <kbd>Alt</kbd> 拖 = 把框住的这块减掉。</dd>
+        <dd>画布上只显示加减之后的最终选区，不会留下一堆虚线框。</dd>
+
+        <dt>搬动选中的像素</dt>
+        <dd>在选区里按住拖动，或者用方向键，就能把选中的像素挪到别处。</dd>
+        <dd>移动的是「悬浮层」，这些像素不会盖住下面已有的内容；下面的东西原样保留。</dd>
+
+        <dt>删除选区</dt>
+        <dd>按 <kbd>Delete</kbd>（或 <kbd>Backspace</kbd>）删掉选区里的像素，选区外的内容不动。</dd>
+
+        <dt>什么时候落笔</dt>
+        <dd>再点一次<kbd>套索</kbd>、换画笔或橡皮、换帧、复制剪切镜像、保存、按 <kbd>Esc</kbd>，这些时候悬浮层才并回画布。其余时候它一直悬着，可以反复调整。</dd>
+
+        <dt>一行工具</dt>
+        <dd><kbd>复制</kbd><kbd>剪切</kbd><kbd>粘贴</kbd> 按选区实际形状取放；<kbd>镜像</kbd> 会问你水平还是垂直；<kbd>全选</kbd> 把整帧提起来；<kbd>回退</kbd> 退一步（<kbd>Ctrl</kbd>+<kbd>Z</kbd> 同样）。</dd>
+        <dd><kbd>复原</kbd> 回到内置的原始点阵；<kbd>保存</kbd> 把当前 16 帧写进存档并生成可以替换 <code>domain/character.lua</code> 的源码。</dd>
+
+        <dt>联动规则</dt>
+        <dd>改左边（右向的镜像来源）时，右向自动跟着镜像；改上 3、上 4 时，下 3、下 4 自动垂直翻转。所以左右、上下不需要各画一遍。</dd>
+      </dl>
+    </div>
+  </section>
+
+  <div class="hint">
+    画布：左键上墨、右键擦除（可按住拖动连续画/擦）　|　
+    套索：直接拖 = 重新框　Shift 拖 = 加选　Alt 拖 = 减选（画布上只显示最终选区）　|　
+    选区里按住拖或方向键 = 搬动这些像素，不会盖住下层内容　|　
+    再点一次套索（或换工具 / 换帧 / 保存）才落笔　|　Delete 键 = 删掉选区里的像素
+  </div>
+</div>
+
+<div id="toast"></div>
+<div class="mask hidden" id="mask"><div class="sheet" id="sheet"></div></div>
+
+<script>
+var DATA = {"version":30,"frames":{"l1":["0000000000011111000000000000","0000000000100000111000000000","0000000001000010001000000000","0000000010000000011100000000","0000000100010000100100000000","0000000100000010111100000000","0000000111111011111100000000","0000000010111111111100000000","0000000010111111111100000000","0000000010101111111000000000","0000000010000011111000000000","0000000000000011101000000000","0000000001100110011000000000","0000000001110011110100000000","0000000001111111110100000000","0000000000111100011100000000","0000000011100110001100000000","0000000010100111001100000000","0000000011111111100100000000","0000000001110111000100000000","0000000001111111000100000000","0000000001111111111000000000","0000000011111111111100000000","0000000011111111111110000000","0000001111111101111111000000","0000001001111000111111000000","0000000111110000100110000000","0000000011100001111100000000"],"l2":["0000000000011111000000000000","0000000000100000111000000000","0000000001000000001000000000","0000000010000010011100000000","0000000100000000100100000000","0000000100010010101100000000","0000000111111011111100000000","0000000010111111111100000000","0000000010111111111100000000","0000000010101111111000000000","0000000010000011111000000000","0000000000000011101000000000","0000000001100110011000000000","0000000001110011110100000000","0000000001111111110100000000","0000000000111100011100000000","0000000000111100111100000000","0000000001111000111100000000","0000000001001001111100000000","0000000001000011111100000000","0000000001000111111000000000","0000000001111111110000000000","0000000000111111110000000000","0000000000011111111000000000","0000000000011111111000000000","0000000000001011111000000000","0000000000000101111100000000","0000000000001011111100000000"],"l3":["0000001111110000000000000000","0000001000011100000000000000","0000010000000010000000000000","0000100000000110000000000000","0001100000011001000000000000","0001010000001111000000000000","0001110110111111000000000000","0000101111111111000000000000","0000100111111110000000000000","1011101011111111000000000000","1001001000111111100000000000","1001100000111101100000000000","0111110001110001100000000000","1011111111101110010000000000","1001100000110000010000000000","1000000000011100001000000000","0100100011111110011000000000","0011111111110111111000000000","0000000001111011111000000000","0000000011111110111000000000","0000000111111111111000000000","0000000111111111111100000000","0000011111111111111100000000","0000011101110011111110000000","0000001110110001111111000000","0000000111100000111011000000","0000000000000000010111000000","0000000000000001111100000000"],"l4":["0000001111110000000000000000","0000001000011100000000000000","0000010000000010000000000000","0000100000000110000000000000","0001100000011001000000000000","0001010000001111000000000000","0001110110111111000000000000","0000101111111111000000000000","0000100111111110000000000000","1011101011111111000000000000","1001001000111111100000000000","1001100000111101100000000000","0111110001110001100000000000","1011111111101110010000000000","1001100000110000010000000000","1000000000011100001000000000","0100100011111110011000000000","0011111111110111111000000000","0000000001111011111000000000","0000000001111110111000000000","0000000000111111111000000000","0000000000111111110000000000","0000000000011111110000000000","0000000000001111110000000000","0000000000001111110000000000","0000000000000111110000000000","0000000000000100110000000000","0000000000001111110000000000"],"u1":["0000000000001101000000000000","0000000000010110100000000000","0000000001101000111000000000","0000000001000000001000000000","0000000011000000001000000000","0000000010000000001000000000","0000000011100000011100000000","0000000011111001111000000000","0000000011111111111100000000","0000000011111111110000000000","0000000001111111111000000000","0000000011111111111000000000","0000000101100000010100000000","0000000101011111110100000000","0000000001101110110010000000","0000001101110001110010000000","0000001011111111111010000000","0000001001111111110010000000","0000000111100001110010000000","0000000001111011111100000000","0000000001111111110000000000","0000000001111111110000000000","0000000001111111110000000000","0000000000111111100000000000","0000000000000101100000000000","0000000000001110100000000000","0000000000000111100000000000","0000000000000111000000000000"],"u2":["0000000000001101000000000000","0000000000010110110000000000","0000000001101000001000000000","0000000001001000010000000000","0000000011000000001000000000","0000000010000000001000000000","0000000011000000111000000000","0000000011110001111000000000","0000000111111111110100000000","0000000101111111110100000000","0000000011111111111000000000","0000000011111111111000000000","0000000101100000011100000000","0000000101110111110010000000","0000000101001110110010000000","0000001011110001111010000000","0000001001111111110010000000","0000001001111111110010000000","0000001001111111111100000000","0000000111110001111000000000","0000000001111111110000000000","0000000001111111110000000000","0000000001111111110000000000","0000000000110111100000000000","0000000000100100000000000000","0000000000111100000000000000","0000000000111100000000000000","0000000000011100000000000000"],"u3":["0000010001000000000100100000","0000001100101110001011000000","0000000100110101110010000000","0000000100100100010010000000","0000000100100000111010000000","0000000101110100001010000000","0000000101110000011010000000","0000000101111111111010000000","0000000111111111111010000000","0000000011111111111010000000","0000000011111111111110000000","0000000011111111011100000000","0000000001101001111000000000","0000000001110111011000000000","0000000000111000111000000000","0000000000111111111000000000","0000000000111111111000000000","0000000000111111111000000000","0000000000111001111000000000","0000000001111111111000000000","0000000001111111111000000000","0000000001111111111000000000","0000000000111111111000000000","0000000000100111111000000000","0000000000100101111000000000","0000000000111100000000000000","0000000000111100000000000000","0000000000111100000000000000"],"u4":["0000010001000000000100100000","0000001100100110101001000000","0000000100111111110010000000","0000000100100100010010000000","0000000100100001011010000000","0000000101110000001010000000","0000000101110000011010000000","0000000101111111111010000000","0000000111111111111010000000","0000000011111111111010000000","0000000011111111111110000000","0000000011101111111100000000","0000000001111001011000000000","0000000001101110111000000000","0000000000110001111000000000","0000000000111111111000000000","0000000000111111111000000000","0000000000111111111000000000","0000000000111001111000000000","0000000001111111111000000000","0000000001111111111000000000","0000000001111111111000000000","0000000000111101111000000000","0000000000111101001000000000","0000000000111101001000000000","0000000000000001111000000000","0000000000000001111000000000","0000000000000001111000000000"],"d1":["0000000000010110000000000000","0000000000111101100000000000","0000000001100000110000000000","0000000010000000011000000000","0000000110000000001000000000","0000000100000000001100000000","0000000100000001011100000000","0000000111010101111100000000","0000000011111110111100000000","0000000011110001010100000000","0000000011001001011000000000","0000000011000000011100000000","0000000101110001110100000000","0000000101101111010000000000","0000001001110000110010000000","0000001011111111110010000000","0000001011101110111010000000","0000001001111101110010000000","0000001001111001110010000000","0000000111111011111110000000","0000000011111111111000000000","0000000001111111110000000000","0000000001111111110000000000","0000000001111111110000000000","0000000000111111100000000000","0000000000111100000000000000","0000000000100100000000000000","0000000000111100000000000000"],"d2":["0000000000001111000000000000","0000000000011010110000000000","0000000000100000011000000000","0000000001000000001100000000","0000000010000000000100000000","0000000011000000010100000000","0000000010100000001110000000","0000000011101010101100000000","0000000011111111011110000000","0000000010101000101010000000","0000000001101000101100000000","0000000011100000001100000000","0000000011110000011010000000","0000000100101111001010000000","0000000101110100111001000000","0000000101111111111101000000","0000000101111111011101000000","0000000011111111111001000000","0000000001111001111101000000","0000000011111101111110000000","0000000001111111111000000000","0000000001111111111000000000","0000000000111111111000000000","0000000000111111111000000000","0000000000011111110000000000","0000000000000011110000000000","0000000000000010010000000000","0000000000000011110000000000"],"d3":["0000000000111100000000000000","0000000000111100000000000000","0000000000111100000000000000","0000000000100101111000000000","0000000000100111111000000000","0000000000111111111000000000","0000000001111111111000000000","0000000001111111111000000000","0000000001111111111000000000","0000000000111001111000000000","0000000000111111111000000000","0000000000111111111000000000","0000000000111111111000000000","0000000000111000111000000000","0000000001110111011000000000","0000000001101001111000000000","0000000011111111011100000000","0000000011111111111110000000","0000000011111111111010000000","0000000111111111111010000000","0000000101111111111010000000","0000000101110000011010000000","0000000101110100001010000000","0000000100100000111010000000","0000000100100100010010000000","0000000100110101110010000000","0000001100101110001011000000","0000010001000000000100100000"],"d4":["0000000000000001111000000000","0000000000000001111000000000","0000000000000001111000000000","0000000000111101001000000000","0000000000111101001000000000","0000000000111101111000000000","0000000001111111111000000000","0000000001111111111000000000","0000000001111111111000000000","0000000000111001111000000000","0000000000111111111000000000","0000000000111111111000000000","0000000000111111111000000000","0000000000110001111000000000","0000000001101110111000000000","0000000001111001011000000000","0000000011101111111100000000","0000000011111111111110000000","0000000011111111111010000000","0000000111111111111010000000","0000000101111111111010000000","0000000101110000011010000000","0000000101110000001010000000","0000000100100001011010000000","0000000100100100010010000000","0000000100111111110010000000","0000001100100110101001000000","0000010001000000000100100000"]}};
+(function () {
+  var DOC = document;
+  var STORE = null;
+  try { STORE = window.localStorage; } catch (e) { STORE = null; }
+
+  var LS = "sokoban_character_editor_v1";
+  var N = 28;
+  var DPR = Math.min(3, (typeof window.devicePixelRatio === "number") ? window.devicePixelRatio : 1);
+
+  var COLS = [["l", "左"], ["r", "右"], ["u", "上"], ["d", "下"]];
+  var DERIV = { r1: ["l1", "h"], r2: ["l2", "h"], r3: ["l3", "h"], r4: ["l4", "h"],
+                d3: ["u3", "v"], d4: ["u4", "v"] };
+  var ORDER = ["l1","l2","l3","l4","u1","u2","u3","u4","d1","d2","d3","d4"];
+
+  function parseRows(rows) { return rows.map(function (r) { return r.split("").map(function (c) { return c === "1" ? 1 : 0; }); }); }
+  function toRows(g) { return g.map(function (r) { return r.join(""); }); }
+  function clone(g) { return g.map(function (r) { return r.slice(); }); }
+  function flipH(g) { return g.map(function (r) { return r.slice().reverse(); }); }
+  function flipV(g) { return g.slice().reverse().map(function (r) { return r.slice(); }); }
+
+  var S = {
+    ver: DATA.version,
+    frames: {},
+    base: {},
+    key: "l1",
+    brush: 1,
+    erase: false,
+    tool: "pencil",
+    sel: null,
+    clip: null,
+    undo: [],
+    stroke: null,
+    lassoStart: null,
+    // 选区：一张 28×28 蒙版（1 = 选中）+ 被提起来的悬浮层墨水。
+    // 加减选只改这张蒙版，屏幕上只显示最终形状，不再画一堆虚线矩形。
+    // 选中的墨水从画布搬进悬浮层，移动时不会盖掉它下面的内容；
+    // 再点一次套索（或换工具 / 换帧 / 保存）才并回画布。
+    mask: null,
+    ink: null,
+    drag: null,
+    selMode: "set",
+    moveFrom: null,
+    dirty: false
+  };
+
+  (function loadFrames() {
+    Object.keys(DATA.frames).forEach(function (k) {
+      if (!DERIV[k]) { S.frames[k] = parseRows(DATA.frames[k]); S.base[k] = parseRows(DATA.frames[k]); }
+    });
+    if (!STORE) return;
+    try {
+      var raw = STORE.getItem(LS);
+      if (!raw) return;
+      var o = JSON.parse(raw);
+      if (!o || !o.frames) return;
+      Object.keys(o.frames).forEach(function (k) {
+        if (S.frames[k] && o.frames[k] && o.frames[k].length === N) S.frames[k] = parseRows(o.frames[k]);
+      });
+      if (o.ver) S.ver = o.ver;
+    } catch (e) {}
+  })();
+
+  function baseOf(k) { return DERIV[k] ? DERIV[k][0] : k; }
+  function frameOf(k) {
+    var d = DERIV[k];
+    if (!d) return clone(S.frames[k]);
+    return d[1] === "h" ? flipH(S.frames[d[0]]) : flipV(S.frames[d[0]]);
+  }
+  function baseFrameOf(k) {
+    var d = DERIV[k];
+    if (!d) return clone(S.base[k]);
+    var src = S.base[d[0]];
+    return d[1] === "h" ? flipH(src) : flipV(src);
+  }
+  function writeFrame(k, grid) {
+    var d = DERIV[k];
+    if (!d) { S.frames[k] = clone(grid); } else {
+      S.frames[d[0]] = d[1] === "h" ? flipH(grid) : flipV(grid);
+    }
+    S.dirty = true;
+  }
+
+  function prep(cv, w, h) {
+    cv.width = Math.round(w * DPR);
+    cv.height = Math.round(h * DPR);
+    cv.style.width = w + "px";
+    cv.style.height = h + "px";
+    var c = cv.getContext("2d");
+    c.setTransform(DPR, 0, 0, DPR, 0, 0);
+    c.imageSmoothingEnabled = false;
+    return c;
+  }
+
+  var CELL = 42, cells = {}, cellCtx = {};
+  (function buildGrid() {
+    var hdr = DOC.getElementById("frameHdr");
+    hdr.appendChild(DOC.createElement("span"));
+    COLS.forEach(function (col) {
+      var d = DOC.createElement("div");
+      d.className = "colab";
+      d.textContent = col[1];
+      hdr.appendChild(d);
+    });
+    var grid = DOC.getElementById("frameGrid");
+    for (var r = 1; r <= 4; r++) {
+      var lab = DOC.createElement("div");
+      lab.className = "rowlab";
+      lab.textContent = r;
+      grid.appendChild(lab);
+      COLS.forEach(function (col) {
+        (function (key) {
+          var cv = DOC.createElement("canvas");
+          cv.className = "cell";
+          cv.title = key;
+          cellCtx[key] = prep(cv, CELL, CELL);
+          cells[key] = cv;
+          grid.appendChild(cv);
+          cv.addEventListener("click", function () {
+            if (key !== S.key) dropSel();
+            S.key = key;
+            S.tool = "pencil";
+            render();
+          });
+        })(col[0] + r);
+      });
+    }
+  })();
+
+  function drawCell(key) {
+    var c = cellCtx[key];
+    var cs = CELL / N;
+    c.fillStyle = "#fff";
+    c.fillRect(0, 0, CELL, CELL);
+    var g = frameOf(key);
+    c.fillStyle = "#141414";
+    var floating = (key === S.key && S.mask && S.ink) ? S.ink : null;
+    for (var y = 0; y < N; y++) for (var x = 0; x < N; x++) {
+      if (g[y][x] || (floating && S.mask[y][x] && floating[y][x])) c.fillRect(x * cs, y * cs, cs, cs);
+    }
+    cells[key].className = "cell" + (key === S.key ? " sel" : "");
+  }
+  function renderCells(changed) {
+    if (!changed) { Object.keys(cells).forEach(drawCell); return; }
+    var b = baseOf(changed);
+    Object.keys(cells).forEach(function (k) { if (baseOf(k) === b) drawCell(k); });
+  }
+
+  var PADCS = 16, PADW = N * PADCS;
+  var padCv = DOC.getElementById("pad");
+  var padCtx = prep(padCv, PADW, PADW);
+
+  function drawPad() {
+    var c = padCtx;
+    c.fillStyle = "#fff";
+    c.fillRect(0, 0, PADW, PADW);
+    c.strokeStyle = "#e6e6e1";
+    c.lineWidth = 1;
+    for (var i = 0; i <= N; i++) {
+      var p = i * PADCS + 0.5;
+      c.beginPath(); c.moveTo(p, 1); c.lineTo(p, PADW - 1); c.stroke();
+      c.beginPath(); c.moveTo(1, p); c.lineTo(PADW - 1, p); c.stroke();
+    }
+    var g = frameOf(S.key);
+    c.fillStyle = "#141414";
+    for (var y = 0; y < N; y++) for (var x = 0; x < N; x++) if (g[y][x]) c.fillRect(x * PADCS, y * PADCS, PADCS, PADCS);
+    // 选中的格子铺一层淡红（只表示"这些格子被选中"）
+    if (S.mask) {
+      c.fillStyle = "rgba(192,32,32,0.17)";
+      for (var ty = 0; ty < N; ty++) for (var tx = 0; tx < N; tx++) {
+        if (S.mask[ty][tx]) c.fillRect(tx * PADCS, ty * PADCS, PADCS, PADCS);
+      }
+    }
+    // 悬浮层：选中的那些像素本体
+    if (S.mask && S.ink) {
+      c.fillStyle = "#141414";
+      for (var iy = 0; iy < N; iy++) for (var ix = 0; ix < N; ix++) {
+        if (S.mask[iy][ix] && S.ink[iy][ix]) c.fillRect(ix * PADCS, iy * PADCS, PADCS, PADCS);
+      }
+    }
+    // 选区轮廓：沿着蒙版的最终形状画一圈虚线，只在边缘落笔
+    if (S.mask) {
+      c.strokeStyle = "#c02020";
+      c.lineWidth = 2;
+      c.setLineDash([5, 4]);
+      c.beginPath();
+      for (var oy = 0; oy < N; oy++) for (var ox = 0; ox < N; ox++) {
+        if (!S.mask[oy][ox]) continue;
+        var L = ox * PADCS, T = oy * PADCS, R2 = L + PADCS, B2 = T + PADCS;
+        if (oy === 0 || !S.mask[oy - 1][ox]) { c.moveTo(L, T + 1); c.lineTo(R2, T + 1); }
+        if (oy === N - 1 || !S.mask[oy + 1][ox]) { c.moveTo(L, B2 - 1); c.lineTo(R2, B2 - 1); }
+        if (ox === 0 || !S.mask[oy][ox - 1]) { c.moveTo(L + 1, T); c.lineTo(L + 1, B2); }
+        if (ox === N - 1 || !S.mask[oy][ox + 1]) { c.moveTo(R2 - 1, T); c.lineTo(R2 - 1, B2); }
+      }
+      c.stroke();
+      c.setLineDash([]);
+    }
+    // 正在拖出来的新框（预览，松手才并入）
+    if (S.drag) {
+      var dg = S.drag;
+      c.strokeStyle = S.selMode === "sub" ? "#1f6feb" : "#c02020";
+      c.lineWidth = 2;
+      c.setLineDash([3, 3]);
+      c.strokeRect(dg.x0 * PADCS + 1, dg.y0 * PADCS + 1,
+        (dg.x1 - dg.x0 + 1) * PADCS - 2, (dg.y1 - dg.y0 + 1) * PADCS - 2);
+      c.setLineDash([]);
+    }
+  }
+
+  function pushUndo(key, grid) {
+    S.undo.push({ key: key, grid: clone(grid),
+                  mask: (S.mask ? cloneMask(S.mask) : null),
+                  ink: (S.ink ? cloneMask(S.ink) : null) });
+    if (S.undo.length > 100) S.undo.shift();
+  }
+  function doUndo() {
+    var u = S.undo.pop();
+    if (!u) { toast("没有可回退的修改"); return; }
+    writeFrame(u.key, u.grid);
+    S.mask = u.mask ? cloneMask(u.mask) : null;
+    S.ink = u.ink ? cloneMask(u.ink) : null;
+    S.moveFrom = null; S.lassoStart = null; S.drag = null;
+    render();
+  }
+
+  function edit(key, fn) {
+    var g = frameOf(key);
+    var before = clone(g);
+    fn(g);
+    pushUndo(key, before);
+    writeFrame(key, g);
+    render();
+  }
+
+  function padCell(ev) {
+    var r = padCv.getBoundingClientRect();
+    var x = Math.floor((ev.clientX - r.left) / (r.width / N));
+    var y = Math.floor((ev.clientY - r.top) / (r.height / N));
+    if (x < 0 || y < 0 || x >= N || y >= N) return null;
+    return { x: x, y: y };
+  }
+
+  // mode: "paint" 上墨 / "erase" 擦除。
+  // 左键默认上墨，右键在 28×28 格子里直接擦除（橡皮按钮选中时左键也擦）。
+  function paintAt(x, y, mode) {
+    var b = S.brush;
+    var g = frameOf(S.key);
+    for (var yy = y; yy < y + b; yy++) for (var xx = x; xx < x + b; xx++) {
+      if (xx < 0 || yy < 0 || xx >= N || yy >= N) continue;
+      g[yy][xx] = (mode === "erase") ? 0 : 1;
+    }
+    writeFrame(S.key, g);
+    drawPad();
+    renderCells(S.key);
+    drawDemo();
+  }
+
+  // 记录一笔的方向：一次拖动里按下的那个键决定整笔是画还是擦
+  function strokeMode(ev) {
+    if (ev.button === 2 || ev.buttons === 2) return "erase";
+    return S.erase ? "erase" : "paint";
+  }
+
+  // 格子区域禁用右键菜单，右键才好当橡皮用
+  padCv.addEventListener("contextmenu", function (ev) { ev.preventDefault(); });
+
+  // ---------- 选区 ----------
+  // 选区就是一张 28×28 的蒙版 + 一层"被提起来"的墨水：
+  //   1. 加减选只改蒙版，屏幕上看到的就是最终结果，不画一堆虚线矩形；
+  //   2. 一旦开始移动（方向键或在选区里拖），选中的墨水会被搬进悬浮层，
+  //      它不再属于画布，所以绝不会覆盖下面的像素，松开也不落回去；
+  //   3. 只有再点一次套索（或换工具 / 换帧 / 复制剪切镜像 / 保存）才把悬浮层并回画布。
+  function emptyMask() {
+    var m = [];
+    for (var y = 0; y < N; y++) { var r = []; for (var x = 0; x < N; x++) r.push(0); m.push(r); }
+    return m;
+  }
+  function hasSel() { return !!S.mask; }
+  function selHas(x, y) { return !!S.mask && S.mask[y][x] === 1; }
+  function selCount() {
+    if (!S.mask) return 0;
+    var c = 0;
+    for (var y = 0; y < N; y++) for (var x = 0; x < N; x++) if (S.mask[y][x]) c++;
+    return c;
+  }
+  function selBounds() {
+    if (!S.mask) return null;
+    var b = null;
+    for (var y = 0; y < N; y++) for (var x = 0; x < N; x++) {
+      if (!S.mask[y][x]) continue;
+      if (!b) b = { x0: x, y0: y, x1: x, y1: y };
+      else {
+        if (x < b.x0) b.x0 = x; if (y < b.y0) b.y0 = y;
+        if (x > b.x1) b.x1 = x; if (y > b.y1) b.y1 = y;
+      }
+    }
+    return b;
+  }
+  // 把拖动出来的矩形并进蒙版：set = 重新框、add = 并入、sub = 抠掉。
+  // 维持一个不变式：画布 = 选区下面的内容，悬浮层 = 被选中的像素，两者合起来才是完整图形。
+  function applyRect(d, mode) {
+    if (mode === "set") { dropSel(); S.mask = emptyMask(); }
+    if (!S.mask) S.mask = emptyMask();
+    var hadInk = !!S.ink;
+    if (hadInk) pushUndo(S.key, frameOf(S.key));
+    for (var y = d.y0; y <= d.y1; y++) for (var x = d.x0; x <= d.x1; x++) {
+      if (x < 0 || y < 0 || x >= N || y >= N) continue;
+      S.mask[y][x] = (mode === "sub") ? 0 : 1;
+    }
+    if (selCount() === 0) { S.mask = null; S.ink = null; return; }
+    if (!S.ink) return;   // 还没搬起来（只是框选），画布保持原样
+    var g = frameOf(S.key), dirty = false;
+    for (var yy = 0; yy < N; yy++) for (var xx = 0; xx < N; xx++) {
+      if (S.mask[yy][xx]) {
+        // 新进选区的墨：从画布提到悬浮层
+        if (!S.ink[yy][xx] && g[yy][xx]) { S.ink[yy][xx] = 1; g[yy][xx] = 0; dirty = true; }
+      } else if (S.ink[yy][xx]) {
+        // 被减出选区的墨：还回画布，免得丢掉
+        S.ink[yy][xx] = 0;
+        if (!g[yy][xx]) { g[yy][xx] = 1; dirty = true; }
+      }
+    }
+    if (dirty) writeFrame(S.key, g);
+  }
+  // 第一次动的时候，把选中的墨水从画布"拿起来"放进悬浮层
+  function liftInk() {
+    if (!S.mask || S.ink) return;
+    // 第一次真正搬运时记一份快照，Ctrl+Z 能整步退回
+    pushUndo(S.key, frameOf(S.key));
+    if (!S.ink) {
+      S.ink = emptyMask();
+      var g = frameOf(S.key);
+      for (var y = 0; y < N; y++) for (var x = 0; x < N; x++) {
+        if (S.mask[y][x] && g[y][x]) S.ink[y][x] = 1;
+      }
+    }
+    // 画布上这些位置清空，之后画布就只表示"选区下面"的内容
+    var g2 = frameOf(S.key);
+    var changed = false;
+    for (var yy = 0; yy < N; yy++) for (var xx = 0; xx < N; xx++) {
+      if (S.mask[yy][xx] && g2[yy][xx]) { g2[yy][xx] = 0; changed = true; }
+    }
+    if (changed) writeFrame(S.key, g2);
+  }
+  // 把悬浮层写回画布并结束选区
+  function dropSel() {
+    if (!S.mask) { S.mask = null; S.ink = null; S.moveFrom = null; return; }
+    if (S.ink) {
+      var g = frameOf(S.key);
+      for (var y = 0; y < N; y++) for (var x = 0; x < N; x++) {
+        if (S.mask[y][x] && S.ink[y][x]) g[y][x] = 1;
+      }
+      writeFrame(S.key, g);
+    }
+    S.mask = null; S.ink = null; S.moveFrom = null;
+    renderCells(S.key);
+    drawDemo();
+  }
+  function clearSel() { S.mask = null; S.ink = null; S.moveFrom = null; }
+
+  // 移动选区里的像素：只动悬浮层，画布上的东西一个都不碰
+  function moveSel(dx, dy) {
+    if (!S.mask) return false;
+    var b = selBounds();
+    if (!b) return false;
+    if (b.x0 + dx < 0 || b.y0 + dy < 0 || b.x1 + dx >= N || b.y1 + dy >= N) return true;
+    if (!S.ink) liftInk();
+    // 平移整张蒙版和悬浮层
+    var nm = emptyMask(), ni = emptyMask();
+    for (var y = 0; y < N; y++) for (var x = 0; x < N; x++) {
+      if (!S.mask[y][x]) continue;
+      nm[y + dy][x + dx] = 1;
+      if (S.ink[y][x]) ni[y + dy][x + dx] = 1;
+    }
+    S.mask = nm; S.ink = ni;
+    drawPad(); renderCells(S.key); drawDemo();
+    return true;
+  }
+
+  padCv.addEventListener("pointerdown", function (ev) {
+    try { padCv.setPointerCapture(ev.pointerId); } catch (e) {}
+    var p = padCell(ev);
+    if (S.tool === "lasso") {
+      if (!p) return;
+      // 点在已有的选区里 = 拎起这块像素跟着鼠标拖（不破坏下面的内容）；
+      // 但按住 Shift/Alt 时一律按"画新框"处理，这样才能在原选区上加减
+      if (S.mask && selHas(p.x, p.y) && !ev.shiftKey && !ev.altKey) {
+        S.moveFrom = { x: p.x, y: p.y, moved: false };
+        drawPad();
+        return;
+      }
+      S.lassoStart = p;
+      S.selMode = ev.shiftKey ? "add" : (ev.altKey ? "sub" : "set");
+      S.drag = { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
+      drawPad();
+      return;
+    }
+    if (S.tool === "selectall") {
+      // 全选状态下点已选格也能拖
+      if (p && S.mask && selHas(p.x, p.y)) {
+        S.moveFrom = { x: p.x, y: p.y, moved: false };
+        drawPad();
+      }
+      return;
+    }
+    if (!p) return;
+    var mode = strokeMode(ev);
+    S.stroke = { key: S.key, before: frameOf(S.key), mode: mode };
+    paintAt(p.x, p.y, mode);
+  });
+
+  padCv.addEventListener("pointermove", function (ev) {
+    // 拖动已有选区里的像素
+    if (S.moveFrom && ev.buttons) {
+      var q0 = padCell(ev);
+      if (!q0) return;
+      var ddx = q0.x - S.moveFrom.x, ddy = q0.y - S.moveFrom.y;
+      if (!ddx && !ddy) return;
+      if (moveSel(ddx, ddy)) {
+        S.moveFrom.x = q0.x; S.moveFrom.y = q0.y;
+        S.moveFrom.moved = true;
+      }
+      return;
+    }
+    if (S.tool === "lasso" && S.lassoStart && ev.buttons) {
+      var p = padCell(ev);
+      if (!p) return;
+      S.drag = {
+        x0: Math.min(S.lassoStart.x, p.x), y0: Math.min(S.lassoStart.y, p.y),
+        x1: Math.max(S.lassoStart.x, p.x), y1: Math.max(S.lassoStart.y, p.y)
+      };
+      drawPad();
+      return;
+    }
+    if (!S.stroke || !ev.buttons) return;
+    var q = padCell(ev);
+    if (!q) return;
+    paintAt(q.x, q.y, S.stroke.mode);
+  });
+
+  function endStroke() {
+    if (S.stroke) {
+      var now = frameOf(S.stroke.key);
+      if (JSON.stringify(now) !== JSON.stringify(S.stroke.before)) S.undo.push({ key: S.stroke.key, grid: S.stroke.before });
+      S.stroke = null;
+    }
+    if (S.tool === "lasso" && S.lassoStart && S.drag) {
+      var one = (S.drag.x1 === S.drag.x0 && S.drag.y1 === S.drag.y0);
+      applyRect(S.drag, S.selMode);
+      if (one && S.selMode === "set" && S.mask) toast("已选中 1 格");
+    }
+    S.lassoStart = null;
+    S.drag = null;
+    S.moveFrom = null;
+    drawPad();
+  }
+  padCv.addEventListener("pointerup", endStroke);
+  padCv.addEventListener("pointercancel", endStroke);
+
+  function cloneMask(m) { return m.map(function (r) { return r.slice(); }); }
+
+  function copySel(cut) {
+    if (!S.mask) { toast("先用套索框一块"); return; }
+    var b = selBounds();
+    if (!b) { toast("选区是空的"); return; }
+    var g = frameOf(S.key);
+    var src = S.ink || g;   // 已经搬起来就从悬浮层取，否则直接从画布取
+    var w = b.x1 - b.x0 + 1, h = b.y1 - b.y0 + 1;
+    var rows = [], ink = 0;
+    for (var y = 0; y < h; y++) {
+      var row = [];
+      for (var x = 0; x < w; x++) {
+        var gx = b.x0 + x, gy = b.y0 + y;
+        var v = (S.mask[gy][gx] && src[gy][gx]) ? 1 : 0;
+        row.push(v);
+        if (v) ink++;
+      }
+      rows.push(row);
+    }
+    if (!ink) { toast("这块是空的"); return; }
+    S.clip = { w: w, h: h, rows: rows };
+    if (cut) {
+      liftInk();
+      S.ink = emptyMask();   // 悬浮层清空，画布上这些像素已经在 liftInk 时拿走了
+      toast("已剪切 " + w + " × " + h + "，点套索落笔");
+    } else {
+      toast("已复制 " + w + " × " + h);
+    }
+  }
+
+  // Delete / Backspace：删掉选区里的像素（悬浮层里删，画布上的东西不动）
+  function deleteSel() {
+    if (!S.mask) { toast("先用套索框一块再删"); return false; }
+    pushUndo(S.key, frameOf(S.key));
+    if (S.ink) {
+      // 已经提起来了：清空悬浮层就等于删掉
+      for (var y = 0; y < N; y++) for (var x = 0; x < N; x++) {
+        if (S.mask[y][x]) S.ink[y][x] = 0;
+      }
+    } else {
+      // 还没提起来：直接从画布上抹掉选区里的墨
+      var g = frameOf(S.key), dirty = false;
+      for (var yy = 0; yy < N; yy++) for (var xx = 0; xx < N; xx++) {
+        if (S.mask[yy][xx] && g[yy][xx]) { g[yy][xx] = 0; dirty = true; }
+      }
+      if (dirty) writeFrame(S.key, g);
+    }
+    drawPad(); renderCells(S.key); drawDemo();
+    toast("已删除选区里的像素");
+    return true;
+  }
+
+  function pasteClip() {
+    if (!S.clip) { toast("先复制一块再粘贴"); return; }
+    var clip = S.clip;
+    var x0 = Math.max(0, Math.min(N - clip.w, Math.floor((N - clip.w) / 2)));
+    var y0 = Math.max(0, Math.min(N - clip.h, Math.floor((N - clip.h) / 2)));
+    // 粘贴出一个新选区（悬浮层），可以接着用方向键挪，点套索才落笔
+    dropSel();
+    S.tool = "lasso";
+    S.erase = false;
+    S.moveFrom = null;
+    S.mask = emptyMask();
+    S.ink = emptyMask();
+    for (var y = 0; y < clip.h; y++) for (var x = 0; x < clip.w; x++) {
+      if (clip.rows[y][x]) {
+        S.mask[y0 + y][x0 + x] = 1;
+        S.ink[y0 + y][x0 + x] = 1;
+      }
+    }
+    render();
+    toast("粘贴成选区，方向键挪位置，点套索落笔");
+  }
+
+  // 镜像：有选区就只翻选区里的像素（悬浮层里翻，不动画布），没有就翻整帧
+  function mirrorFrame(dir) {
+    if (S.mask) {
+      if (!S.ink) liftInk();
+      var b = selBounds();
+      if (!b) return;
+      var nm = emptyMask(), ni = emptyMask();
+      for (var y = b.y0; y <= b.y1; y++) for (var x = b.x0; x <= b.x1; x++) {
+        if (!S.mask[y][x]) continue;
+        var nx = (dir === "h") ? (b.x0 + b.x1 - x) : x;
+        var ny = (dir === "v") ? (b.y0 + b.y1 - y) : y;
+        nm[ny][nx] = 1;
+        if (S.ink[y][x]) ni[ny][nx] = 1;
+      }
+      S.mask = nm; S.ink = ni;
+      render();
+      return;
+    }
+    edit(S.key, function (g) {
+      var full = dir === "h" ? flipH(g) : flipV(g);
+      for (var yy = 0; yy < N; yy++) for (var xx = 0; xx < N; xx++) g[yy][xx] = full[yy][xx];
+    });
+  }
+
+  function resetFrame() {
+    edit(S.key, function (g) {
+      var b = baseFrameOf(S.key);
+      for (var y = 0; y < N; y++) for (var x = 0; x < N; x++) g[y][x] = b[y][x];
+    });
+    clearSel();
+    toast("已复原到内置点阵");
+  }
+
+  var DC = 28, DCOLS = 11, DROWS = 6;
+  var DEMO0 = ["###########",
+               "#..#......#",
+               "#....o....#",
+               "#..*.o.@..#",
+               "#......#..#",
+               "###########"];
+  var demoCv = DOC.getElementById("demo");
+  var demoCtx = prep(demoCv, DC * DCOLS, DC * DROWS);
+  var demo = { map: [], px: 4, py: 3, dir: "right", step: 1, push: 0 };
+
+  function demoReset() {
+    demo.map = DEMO0.map(function (r) { return r.split(""); });
+    for (var y = 0; y < DROWS; y++) for (var x = 0; x < DCOLS; x++) {
+      if (demo.map[y][x] === "@") { demo.px = x; demo.py = y; demo.map[y][x] = "."; }
+    }
+    demo.dir = "right"; demo.step = 1; demo.push = 0;
+    drawDemo();
+  }
+  function demoAt(x, y) {
+    if (x < 0 || y < 0 || x >= DCOLS || y >= DROWS) return "#";
+    return demo.map[y][x];
+  }
+  // 砖墙：墨色砖块 + 纸白砖缝（和游戏里那款墙一样，白底黑砖）
+  function drawBrick(c, x, y, s) {
+    c.fillStyle = "#ffffff";
+    c.fillRect(x, y, s, s);
+    var bh = Math.max(4, Math.round(s / 4)), bw = Math.max(6, Math.round(s / 2));
+    c.fillStyle = "#141414";
+    var k = 0;
+    for (var by = y; by < y + s; by += bh, k++) {
+      var off = (k % 2) ? -Math.round(bw / 2) : 0;
+      for (var bx = x + off; bx < x + s; bx += bw) {
+        var l = Math.max(x, bx + 1), r = Math.min(x + s, bx + bw);
+        if (r > l) c.fillRect(l, by + 1, r - l, bh - 1);
+      }
+    }
+  }
+  // 箱子：纸白芯 + 墨色双框 + 中间叉
+  function crateMark(c, x, y, s, ink, done) {
+    c.fillStyle = "#ffffff";
+    c.fillRect(x, y, s, s);
+    c.strokeStyle = ink; c.lineWidth = 2;
+    c.strokeRect(x + 2, y + 2, s - 4, s - 4);
+    c.strokeRect(x + 5, y + 5, s - 10, s - 10);
+    if (done) {
+      // 已经停在目标点上的箱子：中间一块实心，一眼看出到位了
+      var m = Math.round(s * 0.28);
+      c.fillStyle = ink;
+      c.fillRect(x + m, y + m, s - m * 2, s - m * 2);
+      c.strokeStyle = "#ffffff"; c.lineWidth = 2;
+      c.beginPath();
+      c.moveTo(x + m + 3, y + m + 3); c.lineTo(x + s - m - 3, y + s - m - 3);
+      c.moveTo(x + s - m - 3, y + m + 3); c.lineTo(x + m + 3, y + s - m - 3);
+      c.stroke();
+    } else {
+      c.beginPath();
+      c.moveTo(x + 6, y + 6); c.lineTo(x + s - 6, y + s - 6);
+      c.moveTo(x + s - 6, y + 6); c.lineTo(x + 6, y + s - 6);
+      c.stroke();
+    }
+  }
+  // 目标点：墨色圆圈 + 中心小点
+  function goalMark(c, x, y, s) {
+    c.fillStyle = "#ffffff";
+    c.fillRect(x, y, s, s);
+    c.strokeStyle = "#141414"; c.lineWidth = 2;
+    c.beginPath(); c.arc(x + s / 2, y + s / 2, s * 0.2, 0, Math.PI * 2); c.stroke();
+    c.fillStyle = "#141414";
+    c.beginPath(); c.arc(x + s / 2, y + s / 2, Math.max(1, s * 0.06), 0, Math.PI * 2); c.fill();
+  }
+  function spriteKey() {
+    var d = demo.dir === "left" ? "l" : demo.dir === "right" ? "r" : demo.dir === "up" ? "u" : "d";
+    // 推：push=1 → 第 3 帧，push=2 → 第 4 帧，来回交替
+    var act = demo.push ? (demo.push + 2) : demo.step;
+    return d + act;
+  }
+  function drawDemo() {
+    var c = demoCtx;
+    // 场景底色就是纸白，和游戏里一样：白底墨线
+    c.fillStyle = "#ffffff";
+    c.fillRect(0, 0, DC * DCOLS, DC * DROWS);
+    for (var y = 0; y < DROWS; y++) for (var x = 0; x < DCOLS; x++) {
+      var ch = demo.map[y][x];
+      if (ch === "#") drawBrick(c, x * DC, y * DC, DC);
+      else if (ch === "*") goalMark(c, x * DC, y * DC, DC);
+      else if (ch === "o") crateMark(c, x * DC, y * DC, DC, "#141414", false);
+      else if (ch === "x") crateMark(c, x * DC, y * DC, DC, "#141414", true);
+    }
+    // 人物：点阵里的 1 就是墨，直接按墨色画
+    var sk = spriteKey();
+    var g = frameOf(sk);
+    var float = (sk === S.key && S.mask && S.ink) ? S.ink : null;
+    var need = DC / N;
+    c.fillStyle = "#141414";
+    for (var yy = 0; yy < N; yy++) for (var xx = 0; xx < N; xx++) {
+      if (g[yy][xx] || (float && S.mask[yy][xx] && float[yy][xx])) {
+        c.fillRect(demo.px * DC + xx * need, demo.py * DC + yy * need, need, need);
+      }
+    }
+  }
+  function demoMove(dx, dy) {
+    var newDir = dx < 0 ? "left" : dx > 0 ? "right" : dy < 0 ? "up" : "down";
+    // 换方向就把迈步相位重置回第 1 帧，四个方向各自有完整的迈步循环
+    if (newDir !== demo.dir) { demo.dir = newDir; demo.step = 1; demo.push = 0; }
+    var nx = demo.px + dx, ny = demo.py + dy;
+    var cell = demoAt(nx, ny);
+    // o = 普通箱子，x = 已经停在目标点上的箱子。两种都能推。
+    if (cell === "o" || cell === "x") {
+      var bx = nx + dx, by = ny + dy, bc = demoAt(bx, by);
+      var onGoal = (cell === "x");
+      var canPush = (bc !== "#" && bc !== "o" && bc !== "x");
+      if (canPush) {
+        // 箱子原来踩着的目标点要留下，不能变成空地
+        demo.map[ny][nx] = onGoal ? "*" : ".";
+        demo.map[by][bx] = (bc === "*") ? "x" : "o";
+        demo.px = nx; demo.py = ny;
+      }
+      // 推得动、推不动都算一次"推"：姿势保持伸手，3、4 帧交替。
+      // 箱子顶到墙继续推也有反馈，不会突然变回走路的样子。
+      demo.push = (demo.push === 1) ? 2 : 1;
+      drawDemo();
+      return;
+    }
+    demo.push = 0;
+    if (cell !== "#" && cell !== "x") { demo.px = nx; demo.py = ny; }
+    demo.step = demo.step === 1 ? 2 : 1;
+    drawDemo();
+  }
+
+  var demoTimer = null, demoDown = null;
+  demoCv.addEventListener("pointerdown", function (ev) {
+    demoDown = { x: ev.clientX, y: ev.clientY };
+    clearTimeout(demoTimer);
+    demoTimer = setTimeout(function () { demoReset(); toast("示意场景已复原"); }, 550);
+  });
+  demoCv.addEventListener("pointerup", function (ev) {
+    clearTimeout(demoTimer);
+    if (!demoDown) return;
+    var dx = ev.clientX - demoDown.x, dy = ev.clientY - demoDown.y;
+    demoDown = null;
+    if (Math.abs(dx) < 12 && Math.abs(dy) < 12) return;
+    if (Math.abs(dx) > Math.abs(dy)) demoMove(dx > 0 ? 1 : -1, 0);
+    else demoMove(0, dy > 0 ? 1 : -1);
+  });
+  demoCv.addEventListener("pointerleave", function () { clearTimeout(demoTimer); demoDown = null; });
+
+  var ROW1 = [["copy", "复制"], ["cut", "剪切"], ["paste", "粘贴"], ["mirror", "镜像"], ["selectall", "全选"], ["undo", "回退"]];
+  var ROW2 = [["b1", "1像素"], ["b4", "4像素"], ["eraser", "橡皮"], ["lasso", "套索"], ["reset", "复原"], ["save", "保存"]];
+  var btns = {};
+  function buildRow(el, list) {
+    list.forEach(function (it) {
+      var b = DOC.createElement("button");
+      b.textContent = it[1];
+      el.appendChild(b);
+      btns[it[0]] = b;
+      b.addEventListener("click", function () { act(it[0]); });
+    });
+  }
+  buildRow(DOC.getElementById("row1"), ROW1);
+  buildRow(DOC.getElementById("row2"), ROW2);
+
+  function act(id) {
+    // 换画笔 / 橡皮：先把选区里的像素落回画布，再退出选区
+    if (id === "b1") { dropSel(); S.brush = 1; S.tool = "pencil"; S.lassoStart = null; S.drag = null; }
+    else if (id === "b4") { dropSel(); S.brush = 4; S.tool = "pencil"; S.lassoStart = null; S.drag = null; }
+    else if (id === "eraser") { dropSel(); S.erase = !S.erase; S.tool = "pencil"; }
+    else if (id === "lasso") {
+      S.erase = false;
+      if (S.tool !== "lasso") { S.tool = "lasso"; clearSel(); }
+      // 再点一次套索 = 落笔（把悬浮层写回画布并退出选区），这是唯一落笔的方式
+      else if (S.mask) { dropSel(); S.tool = "pencil"; toast("已落笔"); }
+      else { S.tool = "pencil"; }
+    }
+    else if (id === "selectall") {
+      S.erase = false;
+      if (S.tool === "selectall") { dropSel(); S.tool = "pencil"; }
+      else {
+        dropSel();
+        S.tool = "selectall";
+        S.mask = emptyMask();
+        for (var sy = 0; sy < N; sy++) for (var sx = 0; sx < N; sx++) S.mask[sy][sx] = 1;
+        liftInk();
+      }
+    }
+    else if (id === "copy") copySel(false);
+    else if (id === "cut") copySel(true);
+    else if (id === "paste") pasteClip();
+    else if (id === "mirror") { if (S.mask) askMirror(); else mirrorFrame("h"); }
+    else if (id === "undo") doUndo();
+    else if (id === "reset") resetFrame();
+    else if (id === "save") { dropSel(); saveAll(true); }
+    render();
+  }
+
+  function render() {
+    renderCells();
+    drawPad();
+    drawDemo();
+    btns.b1.className = S.brush === 1 ? "on" : "";
+    btns.b4.className = S.brush === 4 ? "on" : "";
+    btns.eraser.className = S.erase ? "on" : "";
+    btns.lasso.className = S.tool === "lasso" ? "on" : "";
+    btns.selectall.className = S.tool === "selectall" ? "on" : "";
+  }
+
+  var mask = DOC.getElementById("mask"), sheet = DOC.getElementById("sheet");
+  function closeMask() { mask.className = "mask hidden"; }
+  mask.addEventListener("click", function (ev) { if (ev.target === mask) closeMask(); });
+
+  function askMirror() {
+    sheet.innerHTML = "";
+    var h = DOC.createElement("h2");
+    h.textContent = "这一块朝哪个方向镜像？";
+    sheet.appendChild(h);
+    var row = DOC.createElement("div");
+    row.className = "row";
+    [["水平镜像", "h"], ["垂直镜像", "v"], ["取消", null]].forEach(function (it) {
+      var b = DOC.createElement("button");
+      b.textContent = it[0];
+      b.addEventListener("click", function () {
+        closeMask();
+        if (it[1]) mirrorFrame(it[1]);
+        render();
+      });
+      row.appendChild(b);
+    });
+    sheet.appendChild(row);
+    mask.className = "mask";
+  }
+
+  function luaSource() {
+    var out = [];
+    out.push("-- 人物动作点阵（28×28）。每帧 28 行，每行 28 个字符：'1' 有墨，'0' 空白。");
+    out.push("-- 由网页版人物动作编辑器导出。");
+    out.push("-- 右向四帧一律由左向逐点镜像得到（M.HAS_RIGHT = false），左右永远对称；");
+    out.push("-- 下3 / 下4 是上3 / 上4 的上下翻转。");
+    out.push("local M = {}");
+    out.push("");
+    out.push("M.SIZE = 28");
+    out.push("M.GENERATED = true");
+    out.push('M.SOURCE = "网页编辑器导出"');
+    out.push("M.HAS_RIGHT = false");
+    out.push("M.VERSION = " + S.ver);
+    out.push("");
+    out.push("M.FRAMES = {");
+    ORDER.forEach(function (k) {
+      out.push("  " + k + " = {");
+      toRows(frameOf(k)).forEach(function (r) { out.push('    "' + r + '",'); });
+      out.push("  },");
+    });
+    out.push("}");
+    out.push("");
+    out.push("return M");
+    return out.join("\n");
+  }
+
+  function saveAll(showToast) {
+    if (S.dirty || !STORE) { S.ver += 1; S.dirty = false; }
+    var pack = { ver: S.ver, frames: {} };
+    Object.keys(S.frames).forEach(function (k) { pack.frames[k] = toRows(S.frames[k]); });
+    if (STORE) {
+      try { STORE.setItem(LS, JSON.stringify(pack)); }
+      catch (e) { toast("浏览器存储不可用，请用「完成」里的下载保存"); }
+    }
+    DOC.getElementById("verTag").textContent = "已存 v" + S.ver;
+    if (showToast) toast("已保存 v" + S.ver);
+  }
+
+  function showExport() {
+    saveAll(false);
+    sheet.innerHTML = "";
+    var h = DOC.createElement("h2");
+    h.textContent = "人物数据 v" + S.ver + "：复制或下载后替换 domain/character.lua";
+    var ta = DOC.createElement("textarea");
+    ta.value = luaSource();
+    ta.readOnly = true;
+    var row = DOC.createElement("div");
+    row.className = "row";
+    var bCopy = DOC.createElement("button");
+    bCopy.textContent = "复制全文";
+    bCopy.addEventListener("click", function () {
+      ta.focus(); ta.select();
+      try { DOC.execCommand("copy"); toast("已复制"); } catch (e) { toast("请手动 Ctrl+C"); }
+    });
+    var bDl = DOC.createElement("button");
+    bDl.textContent = "下载 character.lua";
+    bDl.addEventListener("click", function () {
+      var blob = new Blob([luaSource()], { type: "text/plain;charset=utf-8" });
+      var a = DOC.createElement("a");
+      a.href = window.URL.createObjectURL(blob);
+      a.download = "character.lua";
+      a.click();
+      setTimeout(function () { window.URL.revokeObjectURL(a.href); }, 2000);
+    });
+    var bClose = DOC.createElement("button");
+    bClose.textContent = "关闭";
+    bClose.addEventListener("click", closeMask);
+    row.appendChild(bCopy); row.appendChild(bDl); row.appendChild(bClose);
+    sheet.appendChild(h); sheet.appendChild(ta); sheet.appendChild(row);
+    mask.className = "mask";
+  }
+
+  DOC.getElementById("btnDone").addEventListener("click", showExport);
+
+  // 导入：把 device 导出的 character.lua 全文粘进来，就把那版数据装进来编辑
+  function showImport() {
+    sheet.innerHTML = "";
+    var h = DOC.createElement("h2");
+    h.textContent = "粘贴 character.lua 全文（或只粘 M.FRAMES 那段）";
+    var ta = DOC.createElement("textarea");
+    ta.placeholder = 'l1 = {\n    "0011...",\n    ...\n  },';
+    var row = DOC.createElement("div");
+    row.className = "row";
+    var bOk = DOC.createElement("button");
+    bOk.textContent = "导入";
+    bOk.addEventListener("click", function () {
+      var got = parseLua(ta.value);
+      if (!got) { toast("没读到 12 帧 28×28 的点阵，检查一下粘贴内容"); return; }
+      Object.keys(got.frames).forEach(function (k) {
+        if (!DERIV[k]) S.frames[k] = got.frames[k];
+      });
+      if (got.ver) S.ver = got.ver;
+      clearSel(); S.undo = []; S.tool = "pencil"; S.dirty = true;
+      DOC.getElementById("verTag").textContent = "已存 v" + S.ver;
+      closeMask(); render();
+      toast("已导入 " + Object.keys(got.frames).length + " 帧（含派生帧）");
+    });
+    var bCancel = DOC.createElement("button");
+    bCancel.textContent = "取消";
+    bCancel.addEventListener("click", closeMask);
+    row.appendChild(bOk); row.appendChild(bCancel);
+    sheet.appendChild(h); sheet.appendChild(ta); sheet.appendChild(row);
+    mask.className = "mask";
+    setTimeout(function () { ta.focus(); }, 30);
+  }
+
+  function parseLua(txt) {
+    if (!txt) return null;
+    var res = {};
+    var re = /([a-z]\d)\s*=\s*\{([\s\S]*?)\}/g;
+    var m;
+    while ((m = re.exec(txt)) !== null) {
+      var key = m[1];
+      var rows = [];
+      var rr = /["']([01]{28})["']/g;
+      var r;
+      while ((r = rr.exec(m[2])) !== null) rows.push(r[1]);
+      if (rows.length === N) res[key] = parseRows(rows);
+    }
+    if (!Object.keys(res).length) return null;
+    var vm = txt.match(/M\.VERSION\s*=\s*(\d+)/);
+    return { frames: res, ver: vm ? parseInt(vm[1], 10) : 0 };
+  }
+
+  DOC.getElementById("btnImport").addEventListener("click", showImport);
+  DOC.getElementById("btnBack").addEventListener("click", function () {
+    if (!window.confirm("返回会丢掉这次没保存的修改，只保留上次保存的版本。继续？")) return;
+    if (STORE) {
+      try {
+        var raw = STORE.getItem(LS);
+        if (raw) {
+          var o = JSON.parse(raw);
+          Object.keys(o.frames || {}).forEach(function (k) {
+            if (S.frames[k]) S.frames[k] = parseRows(o.frames[k]);
+          });
+          if (o.ver) S.ver = o.ver;
+        } else {
+          Object.keys(S.base).forEach(function (k) { S.frames[k] = clone(S.base[k]); });
+        }
+      } catch (e) {}
+    } else {
+      Object.keys(S.base).forEach(function (k) { S.frames[k] = clone(S.base[k]); });
+    }
+    clearSel(); S.undo = []; S.tool = "pencil";
+    DOC.getElementById("verTag").textContent = "已存 v" + S.ver;
+    render();
+    toast("已回到上次保存的版本");
+  });
+
+  DOC.addEventListener("keydown", function (ev) {
+    var k = ev.key;
+    var dx = 0, dy = 0;
+    if (k === "ArrowLeft") dx = -1;
+    else if (k === "ArrowRight") dx = 1;
+    else if (k === "ArrowUp") dy = -1;
+    else if (k === "ArrowDown") dy = 1;
+    else if (k === "Escape") { closeMask(); dropSel(); render(); return; }
+    else if ((k === "z" || k === "Z") && (ev.ctrlKey || ev.metaKey)) { doUndo(); ev.preventDefault(); return; }
+    else if (k === "Delete" || k === "Backspace") {
+      ev.preventDefault();
+      deleteSel();
+      return;
+    }
+    else return;
+    ev.preventDefault();
+    if (S.mask) { moveSel(dx, dy); return; }
+    demoMove(dx, dy);
+  });
+
+  var toastEl = DOC.getElementById("toast"), toastTimer = null;
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.className = "show";
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.className = ""; }, 1800);
+  }
+
+  DOC.getElementById("verTag").textContent = "已存 v" + S.ver;
+  demoReset();
+  render();
+})();
+</script>
+</body>
+</html>

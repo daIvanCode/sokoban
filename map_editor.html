@@ -1,0 +1,1072 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>地图编辑器</title>
+<style>
+  :root { --ink:#141414; --line:#c9c9c4; --bg:#eceae4; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font:13px/1.5 "Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif; }
+  .wrap { max-width:1000px; margin:0 auto; padding:10px 14px 26px; }
+  header { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:8px; }
+  header .lt { display:flex; align-items:center; gap:8px; }
+  header .rt { display:flex; justify-content:flex-end; }
+  h1 { font-size:20px; margin:0; letter-spacing:2px; }
+  .tag { font:11px/1 ui-monospace,monospace; border:1px solid var(--line);
+    background:#fff; padding:4px 6px; border-radius:3px; color:#444; white-space:nowrap; }
+  button { font:inherit; cursor:pointer; background:#fff; color:var(--ink);
+    border:1px solid #9a9a94; border-radius:4px; padding:6px 13px; }
+  button:hover { background:#f3f2ee; }
+  button.on { background:var(--ink); color:#fff; border-color:var(--ink); }
+  button.primary { background:var(--ink); color:#fff; border-color:var(--ink); }
+  button.primary:hover { background:#2c2c2c; }
+  button:disabled { opacity:.45; cursor:default; }
+  .card { background:#fff; border:1px solid var(--line); padding:8px; }
+  .toolsRow { display:grid; grid-template-columns:repeat(6,1fr); gap:8px; margin-top:12px; }
+  .toolsRow button { padding:10px 2px; }
+  .canvasWrap { display:flex; flex-direction:column; align-items:center; margin-top:14px; }
+  #grid { display:block; background:#fff; border:1px solid #b9b9b3;
+    touch-action:none; user-select:none; -webkit-user-select:none;
+    width:480px; max-width:94vw; height:auto; }
+  .stat { margin-top:8px; font-size:12px; color:#555; }
+  .hint { margin-top:4px; font-size:12px; color:#5a5a54; text-align:center; min-height:18px; }
+  .btns { margin-top:14px; }
+  .brow2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .brow2 button { padding:12px 4px; }
+  .guide { margin-top:12px; display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .guide .card { padding:10px 12px; }
+  .guide h3 { font-size:13px; margin:0 0 6px; letter-spacing:1px;
+    border-bottom:1px solid var(--line); padding-bottom:5px; }
+  .guide dl { margin:0; font-size:12px; line-height:1.6; }
+  .guide dt { font-weight:600; margin-top:6px; color:#141414; }
+  .guide dt:first-child { margin-top:0; }
+  .guide dd { margin:2px 0 0; color:#555; padding-left:14px; position:relative; }
+  .guide dd::before { content:"·"; position:absolute; left:4px; }
+  .guide code { font:11px/1 ui-monospace,Consolas,monospace; background:#f4f3ef;
+    padding:1px 4px; border-radius:3px; }
+  kbd { font:11px/1 ui-monospace,monospace; border:1px solid #b0b0aa; border-bottom-width:2px;
+    border-radius:3px; padding:2px 5px; background:#f7f6f3; color:#141414; white-space:nowrap; }
+  @media (max-width:760px) { .guide { grid-template-columns:1fr; } .toolsRow { grid-template-columns:repeat(3,1fr); } }
+  #toast { position:fixed; left:50%; bottom:20px; transform:translateX(-50%);
+    background:#141414; color:#fff; padding:8px 16px; border-radius:4px; font-size:13px;
+    opacity:0; transition:opacity .18s; pointer-events:none; z-index:30; }
+  #toast.show { opacity:1; }
+  .mask { position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex;
+    align-items:center; justify-content:center; padding:20px; z-index:20; }
+  .mask.hidden { display:none; }
+  .sheet { background:#fff; border-radius:6px; padding:14px; width:100%; max-width:820px;
+    max-height:86vh; display:flex; flex-direction:column; gap:10px; }
+  .sheet h2 { font-size:15px; margin:0; }
+  .sheet .tabs { display:flex; gap:8px; }
+  .sheet textarea { flex:1; min-height:260px; width:100%; resize:vertical;
+    font:12px/1.35 ui-monospace,Consolas,monospace; border:1px solid var(--line); padding:8px; }
+  .sheet .row { display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+  .sheet .note { font-size:12px; color:#555; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="lt">
+      <span class="tag" id="verTag">已存 v1</span>
+      <button id="btnImport">导入</button>
+      <button id="btnBack">返回</button>
+    </div>
+    <h1>地图编辑</h1>
+    <div class="rt"><button id="btnDone">完成</button></div>
+  </header>
+
+  <section class="toolsRow" id="toolRow"></section>
+
+  <section class="canvasWrap">
+    <canvas id="grid"></canvas>
+    <div class="stat" id="stat"></div>
+    <div class="hint" id="hint">左键画、右键擦；按住拖动可以连着画一片</div>
+  </section>
+
+  <section class="btns">
+    <div class="brow2">
+      <button id="btnClear">清空</button>
+      <button id="btnPlay" class="primary">试玩</button>
+    </div>
+  </section>
+
+  <section class="guide">
+    <div class="card">
+      <h3>怎么画</h3>
+      <dl>
+        <dt>六个工具</dt>
+        <dd>地面、墙、目标、箱子、人物、擦除。先点工具，再点格子画上去；也可以按 <kbd>1</kbd>–<kbd>6</kbd> 直接换。</dd>
+        <dt>按住拖动</dt>
+        <dd>按住左键在格子上拖，可以连着画一整条（墙、地面最常用）。</dd>
+        <dt>右键就是擦</dt>
+        <dd>右键点格子（或按住拖）把那几格擦回地面，不用先切工具。触屏设备上就选「擦除」。</dd>
+        <dt>再点一次取消</dt>
+        <dd>墙 / 目标 / 箱子这一格已经是同一种，再点一下就变回地面，改错很快。</dd>
+        <dt>人物只有一个</dt>
+        <dd>新点一处人物，原来那格自动变回地面。</dd>
+        <dt>清空是彻底清空</dt>
+        <dd>连外围那一圈墙一起清掉，一张白纸重画。按错了 <kbd>Ctrl</kbd>+<kbd>Z</kbd> 能撤回来。</dd>
+        <dt>尺寸和关卡表一致</dt>
+        <dd>固定 16×16，和游戏里 <code>mapdata100.js</code> 的 100 个关卡同尺寸，导进去不用再换算。</dd>
+      </dl>
+    </div>
+
+    <div class="card">
+      <h3>快捷键</h3>
+      <dl>
+        <dt><kbd>1</kbd>–<kbd>6</kbd></dt>
+        <dd>切换工具：地面 / 墙 / 目标 / 箱子 / 人物 / 擦除。</dd>
+        <dt><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></dt>
+        <dd>编辑时移动光标（方框跟着走）；试玩时是人走一步。</dd>
+        <dt><kbd>空格</kbd> / <kbd>Enter</kbd></dt>
+        <dd>在光标那一格画上当前工具。</dd>
+        <dt><kbd>Delete</kbd> / <kbd>Backspace</kbd></dt>
+        <dd>把光标那一格擦回地面。</dd>
+        <dt><kbd>Ctrl</kbd>+<kbd>Z</kbd></dt>
+        <dd>撤销一步；<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> 或 <kbd>Ctrl</kbd>+<kbd>Y</kbd> 重做。</dd>
+        <dt><kbd>P</kbd></dt>
+        <dd>试玩 / 退出试玩。</dd>
+        <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt>
+        <dd>试玩时走一步（和方向键一样）。</dd>
+        <dt><kbd>Esc</kbd></dt>
+        <dd>关掉弹窗；试玩中就是退出试玩。</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section class="guide">
+    <div class="card">
+      <h3>试玩</h3>
+      <dl>
+        <dt>怎么玩</dt>
+        <dd>点「试玩」，方向键 / WASD 走一步，也可以在画面上往一个方向滑。画布下方会显示当前步数和还没到位的箱子数。</dd>
+        <dt>规则</dt>
+        <dd>箱子推到目标点上变成实心样式；所有箱子都到位就算过关。图里只放人、没放箱子也能走，只是没有过关条件。</dd>
+        <dt>不写进度</dt>
+        <dd>试玩只是看看这张图能不能走，不写进游戏进度。退出就回编辑，图还在。</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h3>导入导出</h3>
+      <dl>
+        <dt>「完成」里拿数据</dt>
+        <dd>两种格式各一份，都能复制或下载。</dd>
+        <dt>字符地图</dt>
+        <dd><code>#</code> 墙、空格 地面、<code>.</code> 目标、<code>$</code> 箱子、<code>@</code> 人物。和 <code>domain/sokoban_state.lua</code> 的关卡表同一格式，写成 <code>{ name = M.NAME, map = M.MAP }</code> 就能加进关卡表。</dd>
+        <dt>数字格式</dt>
+        <dd><code>1</code> 墙、<code>2</code> 目标、<code>3</code> 箱子、<code>4</code> 人物、<code>0</code> 空地。和 <code>docs/mapdata100.js</code> 一样，直接替换其中的 <code>levels[N]</code>。</dd>
+        <dt>「导入」能吃什么</dt>
+        <dd>上面任一种都行，也可以只贴一段地图行。比 16×16 大的只取左上角，小的空处按地面补齐。</dd>
+      </dl>
+    </div>
+  </section>
+</div>
+
+<div class="mask hidden" id="mask"><div class="sheet" id="sheet"></div></div>
+<div id="toast"></div>
+
+<script>
+var PDOWN = ["0000000000010110000000000000","0000000000111101100000000000","0000000001100000110000000000","0000000010000000011000000000","0000000110000000001000000000","0000000100000000001100000000","0000000100000001011100000000","0000000111010101111100000000","0000000011111110111100000000","0000000011110001010100000000","0000000011001001011000000000","0000000011000000011100000000","0000000101110001110100000000","0000000101101111010000000000","0000001001110000110010000000","0000001011111111110010000000","0000001011101110111010000000","0000001001111101110010000000","0000001001111001110010000000","0000000111111011111110000000","0000000011111111111000000000","0000000001111111110000000000","0000000001111111110000000000","0000000001111111110000000000","0000000000111111100000000000","0000000000111100000000000000","0000000000100100000000000000","0000000000111100000000000000"];
+(function () {
+  var DOC = document;
+  var STORE = null;
+  try { STORE = window.localStorage; } catch (e) { STORE = null; }
+
+  var LS = "sokoban_map_editor_v1";
+  var COLS = 16, ROWS = 16;
+  var F = 0, W = 1, G = 2, B = 3, P = 4;
+
+  var TOOLS = [
+    { id: "floor",  label: "地面", v: F,  key: "1" },
+    { id: "wall",   label: "墙",   v: W,  key: "2" },
+    { id: "goal",   label: "目标", v: G,  key: "3" },
+    { id: "box",    label: "箱子", v: B,  key: "4" },
+    { id: "player", label: "人物", v: P,  key: "5" },
+    { id: "erase",  label: "擦除", v: -1, key: "6" }
+  ];
+
+  function toolById(id) {
+    for (var i = 0; i < TOOLS.length; i++) if (TOOLS[i].id === id) return TOOLS[i];
+    return TOOLS[1];
+  }
+
+  function emptyGrid() {
+    var g = [];
+    for (var r = 0; r < ROWS; r++) {
+      var row = [];
+      for (var c = 0; c < COLS; c++) row.push(F);
+      g.push(row);
+    }
+    return g;
+  }
+
+  // 默认底图和游戏里的地图编辑一样：四周一圈墙，人、箱子、目标点摆在中间
+  function defaultGrid() {
+    var g = emptyGrid();
+    for (var c = 0; c < COLS; c++) { g[0][c] = W; g[ROWS - 1][c] = W; }
+    for (var r = 0; r < ROWS; r++) { g[r][0] = W; g[r][COLS - 1] = W; }
+    g[7][5] = P;
+    g[7][7] = B;
+    g[7][8] = G;
+    return g;
+  }
+
+  function rowsOf(g) { return g.map(function (r) { return r.join(""); }); }
+  function gridOf(rows) {
+    var g = emptyGrid();
+    for (var r = 0; r < ROWS; r++) {
+      var s = String(rows[r] || "");
+      for (var c = 0; c < COLS; c++) {
+        var v = parseInt(s.charAt(c), 10);
+        g[r][c] = (v >= 0 && v <= 4) ? v : F;
+      }
+    }
+    return g;
+  }
+
+  var S = {
+    ver: 1,
+    grid: defaultGrid(),
+    tool: "wall",
+    cursor: { r: 7, c: 5 },
+    undo: [],
+    redo: [],
+    stroke: null,
+    dragging: false,
+    touch: null,
+    hover: null,
+    showCursor: false,
+    play: null,
+    dirty: false
+  };
+
+  // ---------- 存档 ----------
+  function loadSaved() {
+    if (!STORE) return null;
+    try {
+      var raw = STORE.getItem(LS);
+      if (!raw) return null;
+      var o = JSON.parse(raw);
+      if (!o || !o.rows || o.rows.length !== ROWS) return null;
+      return { ver: o.ver || 1, grid: gridOf(o.rows) };
+    } catch (e) { return null; }
+  }
+
+  function saveAll(showToast) {
+    if (S.dirty || !STORE) { S.ver += 1; S.dirty = false; }
+    if (STORE) {
+      try { STORE.setItem(LS, JSON.stringify({ ver: S.ver, rows: rowsOf(S.grid) })); }
+      catch (e) { toast("浏览器存储不可用，请用「完成」里的下载保存"); }
+    }
+    DOC.getElementById("verTag").textContent = "已存 v" + S.ver;
+    if (showToast) toast("已保存 v" + S.ver);
+  }
+
+  var first = loadSaved();
+  if (first) { S.grid = first.grid; S.ver = first.ver; }
+
+  // ---------- 撤销 / 重做 ----------
+  function pushUndo() {
+    S.undo.push(rowsOf(S.grid));
+    if (S.undo.length > 200) S.undo.shift();
+    S.redo = [];
+  }
+  function undo() {
+    if (!S.undo.length) { toast("没有可撤销的步骤"); return; }
+    S.redo.push(rowsOf(S.grid));
+    S.grid = gridOf(S.undo.pop());
+    S.dirty = true;
+    draw();
+    toast("已撤销");
+  }
+  function redo() {
+    if (!S.redo.length) { toast("没有可重做的步骤"); return; }
+    S.undo.push(rowsOf(S.grid));
+    S.grid = gridOf(S.redo.pop());
+    S.dirty = true;
+    draw();
+    toast("已重做");
+  }
+
+  // ---------- 画格子 ----------
+  var cv = DOC.getElementById("grid");
+  var DPR = Math.min(3, (typeof window.devicePixelRatio === "number") ? window.devicePixelRatio : 1);
+  var CELL = 30, GW = COLS * CELL, GH = ROWS * CELL;
+  cv.width = Math.round(GW * DPR);
+  cv.height = Math.round(GH * DPR);
+  var g2 = cv.getContext("2d");
+  g2.scale(DPR, DPR);
+
+  function paper(ctx, x, y, s) { ctx.fillStyle = "#fff"; ctx.fillRect(x, y, s, s); }
+
+  // 墙：黑砖 + 白缝。砖缝位置按画布绝对坐标算（和游戏里那堵墙同一个道理），
+  // 所以相邻格子的砖缝天然接得上，铺一片墙就是连续错缝的砖墙。
+  var BRICK_W = 14, BRICK_H = 7;
+
+  function drawWall(ctx, x, y, s) {
+    ctx.fillStyle = "#141414";
+    ctx.fillRect(x, y, s, s);
+    ctx.fillStyle = "#fff";
+    var x1 = x + s, y1 = y + s;
+    var k0 = Math.floor(y / BRICK_H), k1 = Math.ceil(y1 / BRICK_H);
+    var k, top, bot, off, bx, vx;
+    // 横向砖缝
+    for (k = k0; k <= k1; k++) {
+      var hy = Math.round(k * BRICK_H);
+      if (hy > y && hy < y1) ctx.fillRect(x, hy, s, 1);
+    }
+    // 竖向砖缝（隔行错开半块）
+    for (k = k0; k <= k1; k++) {
+      top = Math.max(y, Math.round(k * BRICK_H) + 1);
+      bot = Math.min(y1, Math.round((k + 1) * BRICK_H));
+      if (bot <= top) continue;
+      off = (k % 2 === 0) ? 0 : BRICK_W / 2;
+      bx = Math.floor((x - off) / BRICK_W) * BRICK_W + off;
+      while (bx < x1) {
+        vx = Math.round(bx);
+        if (vx > x && vx < x1) ctx.fillRect(vx, top, 1, bot - top);
+        bx += BRICK_W;
+      }
+    }
+  }
+
+  // 目标点：外圈空心圆 + 圆心实点
+  function drawGoal(ctx, x, y, s) {
+    var cx = x + s / 2, cy = y + s / 2;
+    var rad = Math.max(4, s * 0.26);
+    ctx.strokeStyle = "#141414";
+    ctx.lineWidth = Math.max(1.5, s / 14);
+    ctx.beginPath();
+    ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = "#141414";
+    ctx.beginPath();
+    ctx.arc(cx, cy, Math.max(1.5, s / 14), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 箱子：纸底 + 外框 + 内框 + 中间的叉 + 四角铆钉
+  function drawCrate(ctx, x, y, s, done) {
+    var k = s / 28;
+    var pad = Math.max(1, Math.round(1.5 * k));
+    var lw = Math.max(1, Math.round(1.6 * k));
+    var inset = Math.max(4, Math.round(5 * k));
+    paper(ctx, x, y, s);
+    if (done) {
+      ctx.fillStyle = "#141414";
+      ctx.fillRect(x + pad, y + pad, s - pad * 2, s - pad * 2);
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = Math.max(1, Math.round(1.2 * k));
+      ctx.strokeRect(x + inset + 0.5, y + inset + 0.5, s - inset * 2 - 1, s - inset * 2 - 1);
+      ctx.beginPath();
+      ctx.moveTo(x + inset + 2, y + inset + 2);
+      ctx.lineTo(x + s - inset - 2, y + s - inset - 2);
+      ctx.moveTo(x + s - inset - 2, y + inset + 2);
+      ctx.lineTo(x + inset + 2, y + s - inset - 2);
+      ctx.stroke();
+      return;
+    }
+    ctx.strokeStyle = "#141414";
+    ctx.lineWidth = lw;
+    ctx.strokeRect(x + lw / 2, y + lw / 2, s - lw, s - lw);
+    ctx.lineWidth = Math.max(1, Math.round(1.1 * k));
+    ctx.strokeRect(x + inset + 0.5, y + inset + 0.5, s - inset * 2 - 1, s - inset * 2 - 1);
+    ctx.beginPath();
+    ctx.moveTo(x + inset + 2, y + inset + 2);
+    ctx.lineTo(x + s - inset - 2, y + s - inset - 2);
+    ctx.moveTo(x + s - inset - 2, y + inset + 2);
+    ctx.lineTo(x + inset + 2, y + s - inset - 2);
+    ctx.stroke();
+    var rr = Math.max(2, Math.round(2 * k));
+    var q = inset + Math.max(1, Math.round(k));
+    ctx.fillStyle = "#141414";
+    ctx.fillRect(x + q, y + q, rr, rr);
+    ctx.fillRect(x + s - q - rr, y + q, rr, rr);
+    ctx.fillRect(x + q, y + s - q - rr, rr, rr);
+    ctx.fillRect(x + s - q - rr, y + s - q - rr, rr, rr);
+  }
+
+  // 人物：用游戏里向下那一帧的真实点阵，看着和真机一致
+  function drawSprite(ctx, x, y, s) {
+    var u = s / 28;
+    ctx.fillStyle = "#141414";
+    for (var gy = 0; gy < 28; gy++) {
+      var line = PDOWN[gy];
+      if (!line) continue;
+      var start = -1;
+      for (var gx = 0; gx <= 28; gx++) {
+        var on = gx < 28 && line.charAt(gx) === "1";
+        if (on && start < 0) start = gx;
+        else if (!on && start >= 0) {
+          var px = x + Math.round(start * u);
+          var py = y + Math.round(gy * u);
+          ctx.fillRect(px, py, Math.max(1, Math.round((gx - start) * u)), Math.max(1, Math.round(u)));
+          start = -1;
+        }
+      }
+    }
+  }
+
+  // 地面格什么都不画，让底下的网格线露出来；有内容的格子自己先铺纸底，
+  // 把网格线盖掉，看起来就是一个完整的图块。
+  function drawEditCell(ctx, v, x, y, s) {
+    if (v === W) drawWall(ctx, x, y, s);
+    else if (v === G) drawGoal(ctx, x, y, s);
+    else if (v === B) drawCrate(ctx, x, y, s, false);
+    else if (v === P) { paper(ctx, x, y, s); drawSprite(ctx, x, y, s); }
+  }
+
+  function drawGridLines(ctx) {
+    ctx.strokeStyle = "#8d8d88";
+    ctx.lineWidth = 1;
+    for (var c = 0; c <= COLS; c++) {
+      var x = Math.round(c * CELL) + 0.5;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, GH); ctx.stroke();
+    }
+    for (var r = 0; r <= ROWS; r++) {
+      var y = Math.round(r * CELL) + 0.5;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(GW, y); ctx.stroke();
+    }
+  }
+
+  function draw() {
+    var ctx = g2;
+    ctx.clearRect(0, 0, GW, GH);
+    paper(ctx, 0, 0, GW);
+    if (S.play) {
+      drawPlay(ctx);
+    } else {
+      drawGridLines(ctx);
+      for (var r = 0; r < ROWS; r++) {
+        for (var c = 0; c < COLS; c++) {
+          drawEditCell(ctx, S.grid[r][c], c * CELL, r * CELL, CELL);
+        }
+      }
+      if (S.hover && !S.dragging) {
+        ctx.fillStyle = "rgba(20,20,20,0.09)";
+        ctx.fillRect(S.hover.c * CELL, S.hover.r * CELL, CELL, CELL);
+      }
+      // 键盘光标：只有在用过方向键之后才画，鼠标操作时画布保持和图里一样干净
+      if (S.showCursor) {
+        ctx.strokeStyle = "#141414";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 3]);
+        ctx.strokeRect(S.cursor.c * CELL + 1, S.cursor.r * CELL + 1, CELL - 2, CELL - 2);
+        ctx.setLineDash([]);
+      }
+    }
+    updateStat();
+  }
+
+  function drawPlay(ctx) {
+    var p = S.play;
+    for (var r = 0; r < ROWS; r++) {
+      for (var c = 0; c < COLS; c++) {
+        var x = c * CELL, y = r * CELL;
+        paper(ctx, x, y, CELL);
+        if (p.walls[r][c]) drawWall(ctx, x, y, CELL);
+        else if (p.goals[r][c]) drawGoal(ctx, x, y, CELL);
+      }
+    }
+    for (var r2 = 0; r2 < ROWS; r2++) {
+      for (var c2 = 0; c2 < COLS; c2++) {
+        if (p.boxes[r2][c2]) drawCrate(ctx, c2 * CELL, r2 * CELL, CELL, !!p.goals[r2][c2]);
+      }
+    }
+    drawSprite(ctx, p.c * CELL, p.r * CELL, CELL);
+  }
+
+  function updateStat() {
+    var el = DOC.getElementById("stat");
+    if (S.play) {
+      var p = S.play;
+      var left = 0;
+      for (var r = 0; r < ROWS; r++) for (var c = 0; c < COLS; c++) if (p.boxes[r][c] && !p.goals[r][c]) left++;
+      el.textContent = p.won
+        ? ("过关！一共 " + p.steps + " 步 —— 重玩一次或退出试玩")
+        : (p.hasBox
+            ? ("试玩中 · 第 " + p.steps + " 步 · 还没到位的箱子 " + left + " 个")
+            : ("试玩中 · 第 " + p.steps + " 步 · 这张图没放箱子，随便走"));
+      return;
+    }
+    var n = { wall: 0, goal: 0, box: 0, player: 0 };
+    for (var rr = 0; rr < ROWS; rr++) {
+      for (var cc = 0; cc < COLS; cc++) {
+        var v = S.grid[rr][cc];
+        if (v === W) n.wall++;
+        else if (v === G) n.goal++;
+        else if (v === B) n.box++;
+        else if (v === P) n.player++;
+      }
+    }
+    el.textContent = "16×16 · 墙 " + n.wall + " · 目标 " + n.goal
+      + " · 箱子 " + n.box + " · 人物 " + n.player
+      + " · 当前工具：" + toolById(S.tool).label;
+  }
+
+  // ---------- 编辑操作 ----------
+  function setCell(r, c, v) {
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return false;
+    if (v === P) {
+      for (var rr = 0; rr < ROWS; rr++) {
+        for (var cc = 0; cc < COLS; cc++) {
+          if (S.grid[rr][cc] === P) S.grid[rr][cc] = F;
+        }
+      }
+    }
+    if (S.grid[r][c] === v) return false;
+    S.grid[r][c] = v;
+    S.dirty = true;
+    return true;
+  }
+
+  // click = 单独点一下（同一种再点一次取消），drag = 拖动经过（只画不取消）
+  function paintCell(r, c, click) {
+    var t = toolById(S.tool);
+    if (t.v === -1) return setCell(r, c, F);
+    var cur = S.grid[r][c];
+    if (click && t.v !== F && t.v !== P && cur === t.v) return setCell(r, c, F);
+    return setCell(r, c, t.v);
+  }
+
+  function cellAt(ev) {
+    var rect = cv.getBoundingClientRect();
+    var x = (ev.clientX - rect.left) * GW / rect.width;
+    var y = (ev.clientY - rect.top) * GH / rect.height;
+    var c = Math.floor(x / CELL), r = Math.floor(y / CELL);
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return null;
+    return { r: r, c: c };
+  }
+
+  cv.addEventListener("contextmenu", function (ev) { ev.preventDefault(); });
+
+  cv.addEventListener("pointerdown", function (ev) {
+    ev.preventDefault();
+    try { cv.setPointerCapture(ev.pointerId); } catch (e) {}
+    if (S.play) {
+      S.touch = { x: ev.clientX, y: ev.clientY, moved: false };
+      return;
+    }
+    var p = cellAt(ev);
+    if (!p) return;
+    pushUndo();
+    S.stroke = { erase: (ev.button === 2) || S.tool === "erase", any: false };
+    S.dragging = true;
+    S.showCursor = false;
+    S.cursor = { r: p.r, c: p.c };
+    var changed;
+    if (S.stroke.erase) changed = setCell(p.r, p.c, F);
+    else changed = paintCell(p.r, p.c, true);
+    S.stroke.any = S.stroke.any || changed;
+    draw();
+  });
+
+  cv.addEventListener("pointermove", function (ev) {
+    if (S.play) {
+      if (S.touch) {
+        var dx = ev.clientX - S.touch.x, dy = ev.clientY - S.touch.y;
+        if (Math.abs(dx) > 18 || Math.abs(dy) > 18) S.touch.moved = true;
+      }
+      return;
+    }
+    if (!S.dragging || !S.stroke) {
+      var hp = cellAt(ev);
+      var old = S.hover;
+      if ((hp ? hp.r + "," + hp.c : "") !== (old ? old.r + "," + old.c : "")) {
+        S.hover = hp;
+        draw();
+      }
+      return;
+    }
+    var p = cellAt(ev);
+    if (!p) return;
+    S.cursor = { r: p.r, c: p.c };
+    var changed = S.stroke.erase ? setCell(p.r, p.c, F) : setCell(p.r, p.c, toolById(S.tool).v < 0 ? F : toolById(S.tool).v);
+    S.stroke.any = S.stroke.any || changed;
+    if (changed) draw();
+  });
+
+  function endPointer(ev) {
+    if (S.play) {
+      if (S.touch) {
+        var dx = ev.clientX - S.touch.x, dy = ev.clientY - S.touch.y;
+        var ax = Math.abs(dx), ay = Math.abs(dy);
+        S.touch = null;
+        if (Math.max(ax, ay) > 18) {
+          var n = Math.min(6, Math.floor(Math.max(ax, ay) / 26) + 1);
+          for (var s = 0; s < n; s++) {
+            if (ax > ay) playMove(0, dx > 0 ? 1 : -1);
+            else playMove(dy > 0 ? 1 : -1, 0);
+          }
+        }
+      }
+      return;
+    }
+    if (S.dragging && S.stroke && !S.stroke.any) S.undo.pop();
+    S.dragging = false;
+    S.stroke = null;
+    draw();
+  }
+  cv.addEventListener("pointerleave", function () {
+    if (S.hover) { S.hover = null; if (!S.play) draw(); }
+  });
+  cv.addEventListener("pointerup", endPointer);
+  cv.addEventListener("pointercancel", function () {
+    S.dragging = false;
+    S.stroke = null;
+    S.touch = null;
+  });
+
+  // ---------- 试玩 ----------
+  function markPlaying(on) {
+    cv.style.borderColor = on ? "#141414" : "#b9b9b3";
+    cv.style.cursor = on ? "default" : "crosshair";
+  }
+
+  function startPlay() {
+    var walls = [], goals = [], boxes = [], player = null, boxCount = 0;
+    for (var r = 0; r < ROWS; r++) {
+      walls.push([]); goals.push([]); boxes.push([]);
+      for (var c = 0; c < COLS; c++) {
+        var v = S.grid[r][c];
+        walls[r].push(v === W);
+        goals[r].push(v === G);
+        boxes[r].push(v === B);
+        if (v === B) boxCount++;
+        if (v === P) player = { r: r, c: c };
+      }
+    }
+    if (!player) { toast("先在图上放一个人物（按 5）"); return; }
+    S.play = { r: player.r, c: player.c, walls: walls, goals: goals, boxes: boxes,
+               steps: 0, won: false, hasBox: boxCount > 0 };
+    DOC.getElementById("btnClear").textContent = "重玩";
+    DOC.getElementById("btnPlay").textContent = "退出试玩";
+    DOC.getElementById("hint").textContent = "方向键 / WASD 走一步，也可以在画面上滑动；Esc 退出试玩";
+    markPlaying(true);
+    renderTools();
+    draw();
+  }
+
+  function exitPlay() {
+    S.play = null;
+    markPlaying(false);
+    DOC.getElementById("btnClear").textContent = "清空";
+    DOC.getElementById("btnPlay").textContent = "试玩";
+    DOC.getElementById("hint").textContent = "左键画、右键擦；按住拖动可以连着画一片";
+    renderTools();
+    draw();
+  }
+
+  function playMove(dr, dc) {
+    var p = S.play;
+    if (!p || p.won) return;
+    var nr = p.r + dr, nc = p.c + dc;
+    if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) return;
+    if (p.walls[nr][nc]) return;
+    if (p.boxes[nr][nc]) {
+      var br = nr + dr, bc = nc + dc;
+      if (br < 0 || br >= ROWS || bc < 0 || bc >= COLS) return;
+      if (p.walls[br][bc] || p.boxes[br][bc]) return;
+      p.boxes[nr][nc] = false;
+      p.boxes[br][bc] = true;
+    }
+    p.r = nr; p.c = nc;
+    p.steps += 1;
+    var allDone = true;
+    var anyBox = false;
+    for (var r = 0; r < ROWS; r++) {
+      for (var c = 0; c < COLS; c++) {
+        if (p.boxes[r][c]) {
+          anyBox = true;
+          if (!p.goals[r][c]) allDone = false;
+        }
+      }
+    }
+    if (anyBox && allDone) { p.won = true; toast("过关！" + p.steps + " 步"); }
+    draw();
+  }
+
+  // ---------- 工具条 ----------
+  var toolRow = DOC.getElementById("toolRow");
+  var toolBtns = {};
+  TOOLS.forEach(function (t) {
+    var b = DOC.createElement("button");
+    b.textContent = t.label;
+    b.title = "快捷键 " + t.key;
+    b.addEventListener("click", function () {
+      S.tool = t.id;
+      renderTools();
+      draw();
+      b.blur();
+    });
+    toolRow.appendChild(b);
+    toolBtns[t.id] = b;
+  });
+  function renderTools() {
+    TOOLS.forEach(function (t) {
+      toolBtns[t.id].className = (S.tool === t.id && !S.play) ? "on" : "";
+      toolBtns[t.id].disabled = !!S.play;
+    });
+  }
+
+  // ---------- 底部按钮 ----------
+  DOC.getElementById("btnClear").addEventListener("click", function (ev) {
+    if (ev && ev.target && ev.target.blur) ev.target.blur();
+    if (S.play) { startPlay(); return; }
+    pushUndo();
+    S.grid = emptyGrid();
+    S.dirty = true;
+    S.showCursor = false;
+    S.cursor = { r: 7, c: 7 };
+    draw();
+    toast("已清空（Ctrl+Z 可撤销）");
+  });
+
+  DOC.getElementById("btnPlay").addEventListener("click", function (ev) {
+    if (ev && ev.target && ev.target.blur) ev.target.blur();
+    if (S.play) exitPlay(); else startPlay();
+  });
+
+  DOC.getElementById("btnDone").addEventListener("click", function () {
+    saveAll(false);
+    showExport();
+  });
+
+  // ---------- 出货：两种格式 ----------
+  function charRows() {
+    return S.grid.map(function (row) {
+      return row.map(function (v) {
+        return v === W ? "#" : v === G ? "." : v === B ? "$" : v === P ? "@" : " ";
+      }).join("");
+    });
+  }
+
+  function luaCharSource() {
+    var rows = charRows();
+    var out = [];
+    out.push("-- 地图 16×16。字符约定：'#' 墙、空格 地面、'.' 目标、'$' 箱子、'@' 人物。");
+    out.push("-- 由网页版地图编辑器导出（v" + S.ver + "）。");
+    out.push("-- 和 domain/sokoban_state.lua 里 M.levels[i].map 同一格式，");
+    out.push("-- 写成 { name = M.NAME, map = M.MAP } 就能直接加进关卡表。");
+    out.push("local M = {}");
+    out.push("");
+    out.push('M.NAME = "自制地图"');
+    out.push("M.SIZE = 16");
+    out.push("M.VERSION = " + S.ver);
+    out.push("");
+    out.push("M.MAP = {");
+    rows.forEach(function (r) { out.push('  "' + r + '",'); });
+    out.push("}");
+    out.push("");
+    out.push("return M");
+    return out.join("\n");
+  }
+
+  function luaNumericSource() {
+    var out = [];
+    out.push("// 1：围墙  2：目标点  3：箱子  4：人物  0：空地");
+    out.push("// 由网页版地图编辑器导出（v" + S.ver + "），16×16。");
+    out.push("// 和 docs/mapdata100.js 里的关卡一模一样：把下面的 0 改成要替换的关卡序号即可。");
+    out.push("levels[0]=[");
+    S.grid.forEach(function (row, i) {
+      out.push("[" + row.join(",") + "]" + (i === ROWS - 1 ? "" : ","));
+    });
+    out.push("];");
+    return out.join("\n");
+  }
+
+  var mask = DOC.getElementById("mask"), sheet = DOC.getElementById("sheet");
+  function closeMask() { mask.className = "mask hidden"; }
+  mask.addEventListener("click", function (ev) { if (ev.target === mask) closeMask(); });
+
+  function download(name, text) {
+    try {
+      var blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      var a = DOC.createElement("a");
+      a.href = window.URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      setTimeout(function () { window.URL.revokeObjectURL(a.href); }, 2000);
+    } catch (e) { toast("这个浏览器不让下载，请手动复制"); }
+  }
+
+  function showExport() {
+    sheet.innerHTML = "";
+    var h = DOC.createElement("h2");
+    h.textContent = "地图数据 v" + S.ver + "：复制或下载";
+    var tabs = DOC.createElement("div");
+    tabs.className = "tabs";
+    var note = DOC.createElement("div");
+    note.className = "note";
+    var ta = DOC.createElement("textarea");
+    ta.readOnly = true;
+
+    var mode = "char";
+    function applyMode(m) {
+      mode = m;
+      if (m === "char") {
+        ta.value = luaCharSource();
+        note.textContent = "字符地图：'#' 墙、空格 地面、'.' 目标、'$' 箱子、'@' 人物。和 domain/sokoban_state.lua 的关卡表同格式。";
+      } else {
+        ta.value = luaNumericSource();
+        note.textContent = "数字格式：1 墙、2 目标、3 箱子、4 人物、0 空地。和 docs/mapdata100.js 一样，把 levels[0] 的序号改成要替换的关卡。";
+      }
+      bChar.className = m === "char" ? "on" : "";
+      bNum.className = m === "num" ? "on" : "";
+    }
+
+    var bChar = DOC.createElement("button");
+    bChar.textContent = "字符地图";
+    bChar.addEventListener("click", function () { applyMode("char"); });
+    var bNum = DOC.createElement("button");
+    bNum.textContent = "数字格式";
+    bNum.addEventListener("click", function () { applyMode("num"); });
+    tabs.appendChild(bChar); tabs.appendChild(bNum);
+
+    var row = DOC.createElement("div");
+    row.className = "row";
+    var bCopy = DOC.createElement("button");
+    bCopy.textContent = "复制全文";
+    bCopy.addEventListener("click", function () {
+      ta.focus(); ta.select();
+      try { DOC.execCommand("copy"); toast("已复制"); } catch (e) { toast("请手动 Ctrl+C"); }
+    });
+    var bDl = DOC.createElement("button");
+    bDl.textContent = "下载文件";
+    bDl.addEventListener("click", function () {
+      download(mode === "char" ? "map.lua" : "levels_map.js", ta.value);
+    });
+    var bClose = DOC.createElement("button");
+    bClose.textContent = "关闭";
+    bClose.addEventListener("click", closeMask);
+    row.appendChild(bCopy); row.appendChild(bDl); row.appendChild(bClose);
+
+    sheet.appendChild(h);
+    sheet.appendChild(tabs);
+    sheet.appendChild(note);
+    sheet.appendChild(ta);
+    sheet.appendChild(row);
+    mask.className = "mask";
+    applyMode("char");
+  }
+
+  // ---------- 导入 ----------
+  function importParse(txt) {
+    if (!txt) return null;
+    var rows = [];
+    // 1) 数字格式：[1,2,0,...]
+    var numBlocks = txt.match(/\[[0-9,\s]+\]/g);
+    if (numBlocks) {
+      numBlocks.forEach(function (blk) {
+        var body = blk.replace(/[\[\]]/g, "");
+        if (!body.trim()) return;
+        var toks = body.split(",").map(function (t) { return t.trim(); }).filter(function (t) { return t !== ""; });
+        if (toks.length < 4) return;
+        var ok = true;
+        toks.forEach(function (t) { if (!/^[0-9]$/.test(t)) ok = false; });
+        if (ok) rows.push(toks.map(Number));
+      });
+    }
+    // 2) 带引号的字符行："###  #"
+    if (!rows.length) {
+      var re = /["']([#\.\s$@*+\-_oO0-9]{4,})["']/g, m;
+      while ((m = re.exec(txt)) !== null) rows.push(m[1].split(""));
+    }
+    // 3) 裸字符行
+    if (!rows.length) {
+      txt.split(/\r?\n/).forEach(function (l) {
+        var s = l.replace(/[,\s]+$/, "");
+        if (s.length >= 4 && /^[#\.\s$@*+\-_oO0-9]+$/.test(s) && /[#$@.]/.test(s)) rows.push(s.split(""));
+      });
+    }
+    if (!rows.length) return null;
+
+    var g = emptyGrid();
+    var cut = false;
+    for (var r = 0; r < rows.length; r++) {
+      if (r >= ROWS) { cut = true; break; }
+      for (var c = 0; c < rows[r].length; c++) {
+        if (c >= COLS) { cut = true; break; }
+        var ch = String(rows[r][c]);
+        var v = F;
+        if (ch === "#" || ch === "1") v = W;
+        else if (ch === "." || ch === "*" || ch === "+" || ch === "o" || ch === "O" || ch === "2") v = G;
+        else if (ch === "$" || ch === "3") v = B;
+        else if (ch === "@" || ch === "4") v = P;
+        g[r][c] = v;
+      }
+    }
+    return { grid: g, cut: cut, extra: rows.length > ROWS };
+  }
+
+  function showImport() {
+    sheet.innerHTML = "";
+    var h = DOC.createElement("h2");
+    h.textContent = "粘贴地图：字符地图、数字格式，或只贴几行地图都行";
+    var ta = DOC.createElement("textarea");
+    ta.placeholder = '###  ####\n#  $ . #\n#  @   #\n########';
+    var row = DOC.createElement("div");
+    row.className = "row";
+    var bOk = DOC.createElement("button");
+    bOk.className = "primary";
+    bOk.textContent = "导入";
+    bOk.addEventListener("click", function () {
+      var got = importParse(ta.value);
+      if (!got) { toast("没读到地图，检查一下粘贴内容"); return; }
+      pushUndo();
+      S.grid = got.grid;
+      S.dirty = true;
+      S.showCursor = false;
+      exitPlayIfNeeded();
+      closeMask();
+      draw();
+      var msg = "已导入";
+      if (got.extra) msg = "读到多组数据，已取最前面的 16 行";
+      else if (got.cut) msg = "已导入（超出 16×16 的部分裁掉了）";
+      toast(msg);
+    });
+    var bCancel = DOC.createElement("button");
+    bCancel.textContent = "取消";
+    bCancel.addEventListener("click", closeMask);
+    row.appendChild(bOk); row.appendChild(bCancel);
+    sheet.appendChild(h);
+    sheet.appendChild(ta);
+    sheet.appendChild(row);
+    mask.className = "mask";
+    setTimeout(function () { ta.focus(); }, 30);
+  }
+
+  function exitPlayIfNeeded() {
+    if (S.play) {
+      S.play = null;
+      DOC.getElementById("btnClear").textContent = "清空";
+      DOC.getElementById("btnPlay").textContent = "试玩";
+      DOC.getElementById("hint").textContent = "左键画、右键擦；按住拖动可以连着画一片";
+      markPlaying(false);
+      renderTools();
+    }
+  }
+
+  DOC.getElementById("btnImport").addEventListener("click", showImport);
+
+  DOC.getElementById("btnBack").addEventListener("click", function () {
+    if (S.dirty) {
+      if (!window.confirm("返回会丢掉这次没保存的修改，只保留上次保存的版本。继续？")) return;
+    }
+    var saved = loadSaved();
+    if (saved) {
+      S.grid = saved.grid;
+      S.ver = saved.ver;
+    } else {
+      S.grid = defaultGrid();
+      S.ver = 1;
+    }
+    S.undo = []; S.redo = []; S.dirty = false;
+    S.cursor = { r: 7, c: 5 };
+    exitPlayIfNeeded();
+    DOC.getElementById("verTag").textContent = "已存 v" + S.ver;
+    renderTools();
+    draw();
+    toast("已回到上次保存的版本");
+  });
+
+  // ---------- 键盘 ----------
+  DOC.addEventListener("keydown", function (ev) {
+    var k = ev.key;
+    if (mask.className.indexOf("hidden") < 0) {
+      if (k === "Escape") closeMask();
+      return;
+    }
+    if ((k === "z" || k === "Z") && (ev.ctrlKey || ev.metaKey)) {
+      ev.preventDefault();
+      if (S.play) return;
+      if (ev.shiftKey) redo(); else undo();
+      return;
+    }
+    if ((k === "y" || k === "Y") && (ev.ctrlKey || ev.metaKey)) {
+      ev.preventDefault();
+      if (!S.play) redo();
+      return;
+    }
+    if (S.play) {
+      var pdr = 0, pdc = 0;
+      if (k === "ArrowLeft" || k === "a" || k === "A") pdc = -1;
+      else if (k === "ArrowRight" || k === "d" || k === "D") pdc = 1;
+      else if (k === "ArrowUp" || k === "w" || k === "W") pdr = -1;
+      else if (k === "ArrowDown" || k === "s" || k === "S") pdr = 1;
+      else if (k === "Escape") { ev.preventDefault(); exitPlay(); return; }
+      else if (k === "p" || k === "P") { ev.preventDefault(); exitPlay(); return; }
+      else return;
+      ev.preventDefault();
+      playMove(pdr, pdc);
+      return;
+    }
+    var ti = "123456".indexOf(k);
+    if (k.length === 1 && ti >= 0) {
+      S.tool = TOOLS[ti].id;
+      renderTools();
+      draw();
+      ev.preventDefault();
+      return;
+    }
+    var dr = 0, dc = 0;
+    if (k === "ArrowLeft") dc = -1;
+    else if (k === "ArrowRight") dc = 1;
+    else if (k === "ArrowUp") dr = -1;
+    else if (k === "ArrowDown") dr = 1;
+    if (dr || dc) {
+      ev.preventDefault();
+      S.showCursor = true;
+      S.cursor.r = Math.max(0, Math.min(ROWS - 1, S.cursor.r + dr));
+      S.cursor.c = Math.max(0, Math.min(COLS - 1, S.cursor.c + dc));
+      draw();
+      return;
+    }
+    if (k === " " || k === "Enter") {
+      ev.preventDefault();
+      pushUndo();
+      var any = paintCell(S.cursor.r, S.cursor.c, true);
+      if (!any) S.undo.pop();
+      draw();
+      return;
+    }
+    if (k === "Delete" || k === "Backspace") {
+      ev.preventDefault();
+      pushUndo();
+      if (!setCell(S.cursor.r, S.cursor.c, F)) S.undo.pop();
+      draw();
+      return;
+    }
+    if (k === "p" || k === "P") {
+      ev.preventDefault();
+      startPlay();
+      return;
+    }
+    if (k === "Escape") { exitPlayIfNeeded(); draw(); return; }
+  });
+
+  window.addEventListener("beforeunload", function (ev) {
+    if (!S.dirty) return undefined;
+    ev.preventDefault();
+    ev.returnValue = "";
+    return "";
+  });
+
+  var toastEl = DOC.getElementById("toast"), toastTimer = null;
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.className = "show";
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.className = ""; }, 1800);
+  }
+
+  DOC.getElementById("verTag").textContent = "已存 v" + S.ver;
+  renderTools();
+  draw();
+})();
+</script>
+</body>
+</html>
